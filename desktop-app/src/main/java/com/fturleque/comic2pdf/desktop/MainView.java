@@ -1,0 +1,213 @@
+package com.fturleque.comic2pdf.desktop;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
+
+import java.awt.Desktop;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.*;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class MainView extends BorderPane {
+
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    private final TextField dataDirField = new TextField();
+    private final TableView<DupRow> dupTable = new TableView<>();
+    private final Label statusLabel = new Label("Ready.");
+
+    public MainView() {
+        setPadding(new Insets(10));
+
+        var top = new VBox(8);
+        top.getChildren().add(buildConfigRow());
+        top.getChildren().add(buildActionsRow());
+        setTop(top);
+
+        setCenter(buildTable());
+        setBottom(buildBottom());
+
+        // default: ./data relative to desktop-app run dir
+        dataDirField.setText(Paths.get("..", "data").normalize().toString());
+        refreshDuplicates();
+    }
+
+    private HBox buildConfigRow() {
+        var chooseBtn = new Button("Choisir dossier data/");
+        chooseBtn.setOnAction(e -> chooseDataDir());
+
+        dataDirField.setPrefColumnCount(60);
+
+        var refreshBtn = new Button("Rafraîchir doublons");
+        refreshBtn.setOnAction(e -> refreshDuplicates());
+
+        var openOutBtn = new Button("Ouvrir out/");
+        openOutBtn.setOnAction(e -> openDir(resolve("out")));
+
+        var openInBtn = new Button("Ouvrir in/");
+        openInBtn.setOnAction(e -> openDir(resolve("in")));
+
+        var row = new HBox(8, new Label("DATA:"), dataDirField, chooseBtn, refreshBtn, openInBtn, openOutBtn);
+        row.setPadding(new Insets(5));
+        return row;
+    }
+
+    private HBox buildActionsRow() {
+        var addBtn = new Button("Déposer un CBR/CBZ...");
+        addBtn.setOnAction(e -> depositFile());
+
+        var hint = new Label("Dépôt: copie en .part puis rename en .cbz/.cbr (fiable).");
+
+        var row = new HBox(12, addBtn, hint);
+        row.setPadding(new Insets(5));
+        return row;
+    }
+
+    private VBox buildTable() {
+        var colKey = new TableColumn<DupRow, String>("jobKey");
+        colKey.setCellValueFactory(c -> c.getValue().jobKeyProperty());
+
+        var colIncoming = new TableColumn<DupRow, String>("incoming");
+        colIncoming.setCellValueFactory(c -> c.getValue().incomingFileProperty());
+
+        var colExisting = new TableColumn<DupRow, String>("existingState");
+        colExisting.setCellValueFactory(c -> c.getValue().existingStateProperty());
+
+        var colAction = new TableColumn<DupRow, String>("Actions");
+        colAction.setCellFactory(tc -> new TableCell<>() {
+            private final Button useExisting = new Button("Utiliser existant");
+            private final Button discard = new Button("Jeter");
+            private final Button force = new Button("Forcer reprocess");
+
+            {
+                useExisting.setOnAction(e -> decide(getTableView().getItems().get(getIndex()), "USE_EXISTING_RESULT"));
+                discard.setOnAction(e -> decide(getTableView().getItems().get(getIndex()), "DISCARD"));
+                force.setOnAction(e -> decide(getTableView().getItems().get(getIndex()), "FORCE_REPROCESS"));
+            }
+
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setGraphic(null);
+                } else {
+                    var box = new HBox(6, useExisting, discard, force);
+                    setGraphic(box);
+                }
+            }
+        });
+
+        dupTable.getColumns().addAll(colKey, colIncoming, colExisting, colAction);
+        dupTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+        var container = new VBox(8, new Label("Doublons en attente (DUPLICATE_PENDING)"), dupTable);
+        container.setPadding(new Insets(10, 5, 10, 5));
+        return container;
+    }
+
+    private HBox buildBottom() {
+        var row = new HBox(statusLabel);
+        row.setPadding(new Insets(8));
+        return row;
+    }
+
+    private void chooseDataDir() {
+        var chooser = new DirectoryChooser();
+        chooser.setTitle("Choisir le dossier data/");
+        var dir = chooser.showDialog(getScene().getWindow());
+        if (dir != null) {
+            dataDirField.setText(dir.getAbsolutePath());
+            refreshDuplicates();
+        }
+    }
+
+    private Path resolve(String sub) {
+        return Paths.get(dataDirField.getText()).resolve(sub);
+    }
+
+    private void openDir(Path dir) {
+        try {
+            Files.createDirectories(dir);
+            if (Desktop.isDesktopSupported()) {
+                Desktop.getDesktop().open(dir.toFile());
+            }
+        } catch (Exception ex) {
+            statusLabel.setText("Erreur ouverture dossier: " + ex.getMessage());
+        }
+    }
+
+    private void depositFile() {
+        var fc = new FileChooser();
+        fc.setTitle("Sélectionner un .cbz ou .cbr");
+        fc.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("Comic archives", "*.cbz", "*.cbr")
+        );
+        File f = fc.showOpenDialog(getScene().getWindow());
+        if (f == null) return;
+
+        Path inDir = resolve("in");
+        try {
+            Files.createDirectories(inDir);
+
+            // Copy to .part then rename atomically
+            String name = f.getName();
+            Path part = inDir.resolve(name + ".part");
+            Path fin = inDir.resolve(name);
+
+            Files.copy(f.toPath(), part, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(part, fin, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+
+            statusLabel.setText("Déposé: " + fin);
+        } catch (Exception ex) {
+            statusLabel.setText("Erreur dépôt: " + ex.getMessage());
+        }
+    }
+
+    private void refreshDuplicates() {
+        Path reports = resolve("reports").resolve("duplicates");
+        try {
+            Files.createDirectories(reports);
+            List<DupRow> rows = new ArrayList<>();
+            try (var stream = Files.list(reports)) {
+                for (Path p : stream.filter(x -> x.toString().endsWith(".json")).collect(Collectors.toList())) {
+                    try {
+                        JsonNode n = mapper.readTree(p.toFile());
+                        String jobKey = n.path("jobKey").asText();
+                        String incoming = n.path("incoming").path("fileName").asText();
+                        String existingState = n.path("existing").path("state").asText("");
+                        rows.add(new DupRow(jobKey, incoming, existingState));
+                    } catch (Exception ignored) {}
+                }
+            }
+            dupTable.getItems().setAll(rows);
+            statusLabel.setText("Doublons: " + rows.size());
+        } catch (IOException ex) {
+            statusLabel.setText("Erreur lecture rapports: " + ex.getMessage());
+        }
+    }
+
+    private void decide(DupRow row, String action) {
+        String jobKey = row.getJobKey();
+        Path decision = resolve("hold").resolve("duplicates").resolve(jobKey).resolve("decision.json");
+        try {
+            Files.createDirectories(decision.getParent());
+            var obj = new HashMap<String, Object>();
+            obj.put("action", action);
+            if ("FORCE_REPROCESS".equals(action)) {
+                obj.put("nonce", UUID.randomUUID().toString());
+            }
+            mapper.writerWithDefaultPrettyPrinter().writeValue(decision.toFile(), obj);
+            statusLabel.setText("Décision écrite: " + action + " (" + jobKey.substring(0, Math.min(12, jobKey.length())) + "...)");
+        } catch (Exception ex) {
+            statusLabel.setText("Erreur écriture décision: " + ex.getMessage());
+        }
+    }
+}

@@ -1,0 +1,39 @@
+services:
+  prep-service:
+    build: ./services/prep-service
+    environment:
+      - DATA_DIR=/data
+      - SERVICE_CONCURRENCY=2
+    volumes:
+      - ./data:/data
+    ports:
+      - "18081:8080"
+
+  ocr-service:
+    build: ./services/ocr-service
+    environment:
+      - DATA_DIR=/data
+      - SERVICE_CONCURRENCY=1
+    volumes:
+      - ./data:/data
+    ports:
+      - "18082:8080"
+
+  orchestrator:
+    build: ./services/orchestrator
+    environment:
+      - DATA_DIR=/data
+      - PREP_URL=http://prep-service:8080
+      - OCR_URL=http://ocr-service:8080
+      - POLL_INTERVAL_MS=1000
+      - PREP_CONCURRENCY=2
+      - OCR_CONCURRENCY=1
+      - MAX_JOBS_IN_FLIGHT=3
+      - MAX_ATTEMPTS_PREP=3
+      - MAX_ATTEMPTS_OCR=3
+      - OCR_LANG=fra+eng
+    volumes:
+      - ./data:/data
+    depends_on:
+      - prep-service
+      - ocr-service

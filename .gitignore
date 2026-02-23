@@ -1,0 +1,4 @@
+data/
+desktop-app/target/
+**/__pycache__/
+*.pyc
