@@ -68,3 +68,106 @@ Décisions supportées :
 - `services/ocr-service`  : ocrmypdf + tesseract -> final.pdf
 - `services/orchestrator` : watch-folder, pipeline, gestion doublons, concurrence
 
+## 6) Tests locaux (sans Docker)
+
+### Prérequis
+- Python 3.12 installé et disponible dans le PATH (`python --version`)
+- pip installé (`pip --version`)
+- Maven 3.9+ (`mvn --version`)
+- Java 21 (`java --version`)
+
+---
+
+### Setup recommandé : venv par service Python
+
+```powershell
+# prep-service
+cd services\prep-service
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pytest -q
+deactivate
+
+# ocr-service
+cd ..\ocr-service
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pytest -q
+deactivate
+
+# orchestrator
+cd ..\orchestrator
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pytest -q
+deactivate
+```
+
+> **Note** : `ocr-service` requiert le paquet `ocrmypdf` comme dépendance prod.
+> Sur Windows, `ocrmypdf` s'installe via pip mais les binaires (tesseract, ghostscript)
+> **ne sont pas requis** pour les tests unitaires (subprocess entièrement mocké).
+
+---
+
+### Tests Java (desktop-app)
+
+```powershell
+cd desktop-app
+mvn test
+```
+
+Les tests JUnit 5 dans `src/test/java/` sont découverts automatiquement
+par maven-surefire-plugin 3.x. Aucune instance JavaFX n'est démarrée.
+
+---
+
+### Script global `run_tests.ps1`
+
+Lance **tous** les tests Python + Java en une seule commande depuis la racine :
+
+```powershell
+cd N:\workspace-dev\comic2pdf-app
+.\run_tests.ps1
+```
+
+Le script :
+1. Installe les dépendances dev de chaque service (`pip install -r requirements-dev.txt`)
+2. Lance `pytest -q` dans chaque service Python
+3. Lance `mvn -q test` dans `desktop-app`
+4. Affiche un résumé coloré (PASS/FAIL par lot)
+5. Retourne `exit 1` si au moins un lot échoue
+
+> Le script utilise l'environnement Python courant. Pour l'isolation complète,
+> activer le venv de chaque service avant de lancer le script,
+> ou lancer les services individuellement comme indiqué ci-dessus.
+
+---
+
+### Structure des tests
+
+```
+services/
+  prep-service/
+    requirements.txt          # dépendances prod
+    requirements-dev.txt      # + pytest, pillow (smoke test PDF)
+    tests/
+      test_core.py            # tri naturel, filtrage images, images_to_pdf
+  ocr-service/
+    requirements-dev.txt
+    tests/
+      test_core.py            # get_tool_versions, build_ocrmypdf_cmd, requeue
+      test_jobs.py            # run_job OK/ERROR (subprocess mocké)
+  orchestrator/
+    requirements-dev.txt
+    tests/
+      test_core.py            # canonical_profile, make_job_key, heartbeat, métriques
+      test_orchestrator.py    # doublons, check_stale_jobs
+
+desktop-app/
+  src/test/java/
+    .../duplicates/
+      DuplicateServiceTest.java  # listDuplicates, writeDecision (JUnit 5)
+```

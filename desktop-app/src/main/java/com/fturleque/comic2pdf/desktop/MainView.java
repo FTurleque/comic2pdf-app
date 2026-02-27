@@ -1,7 +1,8 @@
 package com.fturleque.comic2pdf.desktop;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fturleque.comic2pdf.desktop.duplicates.DuplicateDecision;
+import com.fturleque.comic2pdf.desktop.duplicates.DuplicateService;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
@@ -12,13 +13,11 @@ import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
-import java.time.Instant;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class MainView extends BorderPane {
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final DuplicateService duplicateService = new DuplicateService(new ObjectMapper());
 
     private final TextField dataDirField = new TextField();
     private final TableView<DupRow> dupTable = new TableView<>();
@@ -172,21 +171,8 @@ public class MainView extends BorderPane {
     }
 
     private void refreshDuplicates() {
-        Path reports = resolve("reports").resolve("duplicates");
         try {
-            Files.createDirectories(reports);
-            List<DupRow> rows = new ArrayList<>();
-            try (var stream = Files.list(reports)) {
-                for (Path p : stream.filter(x -> x.toString().endsWith(".json")).collect(Collectors.toList())) {
-                    try {
-                        JsonNode n = mapper.readTree(p.toFile());
-                        String jobKey = n.path("jobKey").asText();
-                        String incoming = n.path("incoming").path("fileName").asText();
-                        String existingState = n.path("existing").path("state").asText("");
-                        rows.add(new DupRow(jobKey, incoming, existingState));
-                    } catch (Exception ignored) {}
-                }
-            }
+            List<DupRow> rows = duplicateService.listDuplicates(Paths.get(dataDirField.getText()));
             dupTable.getItems().setAll(rows);
             statusLabel.setText("Doublons: " + rows.size());
         } catch (IOException ex) {
@@ -196,15 +182,9 @@ public class MainView extends BorderPane {
 
     private void decide(DupRow row, String action) {
         String jobKey = row.getJobKey();
-        Path decision = resolve("hold").resolve("duplicates").resolve(jobKey).resolve("decision.json");
         try {
-            Files.createDirectories(decision.getParent());
-            var obj = new HashMap<String, Object>();
-            obj.put("action", action);
-            if ("FORCE_REPROCESS".equals(action)) {
-                obj.put("nonce", UUID.randomUUID().toString());
-            }
-            mapper.writerWithDefaultPrettyPrinter().writeValue(decision.toFile(), obj);
+            DuplicateDecision decision = DuplicateDecision.valueOf(action);
+            duplicateService.writeDecision(Paths.get(dataDirField.getText()), jobKey, decision);
             statusLabel.setText("Décision écrite: " + action + " (" + jobKey.substring(0, Math.min(12, jobKey.length())) + "...)");
         } catch (Exception ex) {
             statusLabel.setText("Erreur écriture décision: " + ex.getMessage());

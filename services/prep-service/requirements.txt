@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+img2pdf
+

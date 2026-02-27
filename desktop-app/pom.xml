@@ -10,9 +10,11 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <javafx.version>21.0.4</javafx.version>
+    <junit.version>5.10.3</junit.version>
   </properties>
 
   <dependencies>
+    <!-- Production -->
     <dependency>
       <groupId>org.openjfx</groupId>
       <artifactId>javafx-controls</artifactId>
@@ -28,6 +30,14 @@
       <artifactId>jackson-databind</artifactId>
       <version>2.17.2</version>
     </dependency>
+
+    <!-- Test -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -39,6 +49,12 @@
         <configuration>
           <mainClass>com.fturleque.comic2pdf.desktop.MainApp</mainClass>
         </configuration>
+      </plugin>
+      <!-- Surefire 3.x pour la découverte JUnit 5 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.3.1</version>
       </plugin>
     </plugins>
   </build>
