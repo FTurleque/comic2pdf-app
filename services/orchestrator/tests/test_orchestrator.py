@@ -27,7 +27,21 @@ def _make_config(tmp_path) -> dict:
         "max_attempts_ocr": 3,
         "job_timeout_s": 600,
         "index_dir": str(tmp_path / "index"),
-        "metrics": {"done": 0, "error": 0, "running": 0, "queued": 0, "updatedAt": ""},
+        "metrics": {
+            "done": 0,
+            "error": 0,
+            "running": 0,
+            "queued": 0,
+            "disk_error": 0,
+            "pdf_invalid": 0,
+            "input_rejected_size": 0,
+            "input_rejected_signature": 0,
+            "updatedAt": "",
+        },
+        "keep_work_dir_days": 7,
+        "min_pdf_size_bytes": 1024,
+        "disk_free_factor": 2.0,
+        "max_input_size_mb": 500,
     }
 
 

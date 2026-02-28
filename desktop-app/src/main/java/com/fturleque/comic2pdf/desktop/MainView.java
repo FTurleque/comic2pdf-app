@@ -39,6 +39,15 @@ public class MainView extends BorderPane {
         refreshDuplicates();
     }
 
+    /**
+     * Retourne le champ de saisie du chemin data/ (partagé avec les autres vues).
+     *
+     * @return Le {@code TextField} contenant le chemin du dossier data/.
+     */
+    public TextField getDataDirField() {
+        return dataDirField;
+    }
+
     private HBox buildConfigRow() {
         var chooseBtn = new Button("Choisir dossier data/");
         chooseBtn.setOnAction(e -> chooseDataDir());

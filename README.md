@@ -165,9 +165,127 @@ services/
     tests/
       test_core.py            # canonical_profile, make_job_key, heartbeat, métriques
       test_orchestrator.py    # doublons, check_stale_jobs
+      test_robustness.py      # validate_pdf, disk_space, signatures ZIP/RAR, cleanup
+      test_http_server.py     # /metrics /jobs /jobs/{key} /config (port éphémère)
+      test_logger.py          # format JSON structuré
 
 desktop-app/
   src/test/java/
+    .../config/
+      ConfigServiceTest.java     # save/load config.json (JUnit 5 + @TempDir)
+    OrchestratorClientTest.java  # parsing JobRow, comportement hors-ligne
     .../duplicates/
       DuplicateServiceTest.java  # listDuplicates, writeDecision (JUnit 5)
 ```
+
+---
+
+## 7) Observabilité (HTTP orchestrateur)
+
+L'orchestrateur expose une **API HTTP minimale** (stdlib Python `http.server`) sur le port `8080`.
+
+### Variables d'environnement
+
+| Variable | Service | Défaut | Description |
+|---|---|---|---|
+| `ORCHESTRATOR_HTTP_PORT` | orchestrator | `8080` | Port d'écoute HTTP |
+| `ORCHESTRATOR_HTTP_BIND` | orchestrator | `0.0.0.0` | Adresse IP de bind |
+| `ORCHESTRATOR_URL`       | desktop-app  | `http://localhost:8080` | URL vers l'orchestrateur |
+
+### Endpoints
+
+```bash
+# Métriques (done, error, disk_error, pdf_invalid, input_rejected_*, ...)
+curl http://localhost:8080/metrics
+
+# Liste des jobs
+curl http://localhost:8080/jobs
+
+# Détail d'un job
+curl http://localhost:8080/jobs/<jobKey>
+
+# Configuration courante
+curl http://localhost:8080/config
+
+# Modifier la configuration à chaud
+curl -X POST http://localhost:8080/config \
+  -H "Content-Type: application/json" \
+  -d '{"prep_concurrency": 3, "ocr_concurrency": 2, "job_timeout_s": 900}'
+```
+
+---
+
+## 8) Robustesse FS + Hardening
+
+### Variables d'environnement supplémentaires
+
+| Variable | Service | Défaut | Description |
+|---|---|---|---|
+| `KEEP_WORK_DIR_DAYS` | orchestrator | `7` | Jours avant suppression des workdirs. `0` = suppression immédiate après DONE |
+| `MIN_PDF_SIZE_BYTES` | orchestrator | `1024` | Taille minimale du PDF final pour le considérer valide |
+| `DISK_FREE_FACTOR`   | orchestrator | `2.0` | Espace disque libre requis = taille_entrée × facteur |
+| `MAX_INPUT_SIZE_MB`  | orchestrator | `500` | Taille maximale d'un fichier entrant (Mo) |
+| `LOG_JSON`           | tous         | `false` | `true` pour logs JSON structurés (une ligne JSON par log) |
+
+### Validations automatiques
+
+1. **Taille fichier** : un fichier trop grand est refusé avant traitement → `data/error/`
+2. **Signature ZIP/RAR** : un fichier sans magic bytes valides est refusé → `data/error/`
+3. **Espace disque** : vérifié avant démarrage PREP (input_size × DISK_FREE_FACTOR)
+4. **PDF final** : validé (header `%PDF-` + taille min) avant move vers `data/out/`
+5. **Cleanup workdir** : janitor périodique (toutes les 600s) supprime les workdirs âgés
+
+---
+
+## 9) Desktop JavaFX — Interface améliorée
+
+L'interface est désormais organisée en **3 onglets** :
+
+| Onglet | Fonctionnalité |
+|---|---|
+| **Doublons** | Vue existante : décisions USE_EXISTING_RESULT / DISCARD / FORCE_REPROCESS |
+| **Jobs** | Suivi temps-réel (refresh auto 3s) avec état, étape, tentative. Bouton "Ouvrir out/" |
+| **Configuration** | PREP_CONCURRENCY, OCR_CONCURRENCY, timeout, langue OCR. Persistance locale + POST /config |
+
+### URL orchestrateur
+
+Configurable via :
+1. Variable d'env `ORCHESTRATOR_URL` (défaut `http://localhost:8080`)
+2. Champ "URL orchestrateur" dans l'onglet Configuration (persisté dans `%APPDATA%\comic2pdf\config.json`)
+
+---
+
+## 10) Mode sans Docker (CLI / watch local) — À venir
+
+### Limitation actuelle
+
+Les trois services Python (`prep-service`, `ocr-service`, `orchestrator`) sont conçus pour
+tourner dans des conteneurs Docker séparés. L'exécution locale sans Docker nécessite :
+
+- La présence des binaires `7z`, `ocrmypdf`, `tesseract`, `ghostscript` dans le PATH
+- La gestion manuelle des ports HTTP inter-services
+
+### Architecture future envisagée
+
+Un package Python unique `comic2pdf` regroupant les trois services :
+
+```
+tools/
+  cli.py           # comic2pdf input.cbz --lang fra+eng --out /tmp
+  watch_local.py   # surveillance dossier + pipeline complet en local
+```
+
+```bash
+# Utilisation CLI envisagée
+python tools/cli.py MonComic.cbz --lang fra+eng --out ./pdfs/
+
+# Watch-folder local
+python tools/watch_local.py --in ./data/in --out ./data/out
+```
+
+Ce mode est **intentionnellement reporté** à une prochaine itération pour :
+- Éviter la complexité des imports croisés entre services
+- Garantir la stabilité du pipeline Docker actuel
+- Permettre de valider les abstractions nécessaires (fonctions pures partagées)
+
+

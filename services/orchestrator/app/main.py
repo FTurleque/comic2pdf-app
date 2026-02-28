@@ -7,6 +7,7 @@ la détection de heartbeats périmés et les métriques basiques.
 import os
 import time
 import shutil
+import threading
 import requests
 
 from app.core import (
@@ -19,7 +20,22 @@ from app.core import (
     update_metrics,
     write_metrics,
 )
-from app.utils import ensure_dir, atomic_write_json, read_json, sha256_file, now_iso
+from app.utils import (
+    ensure_dir,
+    atomic_write_json,
+    read_json,
+    sha256_file,
+    now_iso,
+    validate_pdf,
+    check_disk_space,
+    check_input_size,
+    check_file_signature,
+    cleanup_old_workdirs,
+)
+from app.logger import get_logger
+from app.http_server import OrchestratorState, start_http_server
+
+_log = get_logger("orchestrator")
 
 # ---------------------------------------------------------------------------
 # Configuration (variables d'environnement)
@@ -46,6 +62,18 @@ MAX_ATTEMPTS_PREP = int(os.environ.get("MAX_ATTEMPTS_PREP", "3"))
 MAX_ATTEMPTS_OCR = int(os.environ.get("MAX_ATTEMPTS_OCR", "3"))
 OCR_LANG = os.environ.get("OCR_LANG", "fra+eng")
 JOB_TIMEOUT_SECONDS = int(os.environ.get("JOB_TIMEOUT_SECONDS", "600"))
+
+# Robustesse FS (B)
+KEEP_WORK_DIR_DAYS = int(os.environ.get("KEEP_WORK_DIR_DAYS", "7"))
+MIN_PDF_SIZE_BYTES = int(os.environ.get("MIN_PDF_SIZE_BYTES", "1024"))
+DISK_FREE_FACTOR = float(os.environ.get("DISK_FREE_FACTOR", "2.0"))
+
+# Hardening entrée (E)
+MAX_INPUT_SIZE_MB = float(os.environ.get("MAX_INPUT_SIZE_MB", "500"))
+
+# Observabilité HTTP (C)
+ORCHESTRATOR_HTTP_PORT = int(os.environ.get("ORCHESTRATOR_HTTP_PORT", "8080"))
+ORCHESTRATOR_HTTP_BIND = os.environ.get("ORCHESTRATOR_HTTP_BIND", "0.0.0.0")
 
 # ---------------------------------------------------------------------------
 # Helpers filesystem
@@ -394,8 +422,42 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
             except Exception:
                 continue
 
+            # E1 — Vérification taille fichier
+            if not check_input_size(staging_path, config.get("max_input_size_mb", MAX_INPUT_SIZE_MB)):
+                _log.warning("Fichier trop grand, rejeté", extra={"stage": "INPUT_CHECK"})
+                err_dst = os.path.join(ERROR_DIR, os.path.basename(staging_path))
+                try:
+                    move_atomic(staging_path, err_dst)
+                except Exception:
+                    pass
+                update_metrics(metrics, "input_rejected_size")
+                continue
+
+            # E2 — Vérification signature ZIP/RAR
+            if not check_file_signature(staging_path):
+                _log.warning("Signature invalide, rejeté", extra={"stage": "INPUT_CHECK"})
+                err_dst = os.path.join(ERROR_DIR, os.path.basename(staging_path))
+                try:
+                    move_atomic(staging_path, err_dst)
+                except Exception:
+                    pass
+                update_metrics(metrics, "input_rejected_signature")
+                continue
+
             file_hash = sha256_file(staging_path)
             _, job_key = make_job_key(file_hash, profile)
+
+            # B4 — Vérification espace disque avant PREP
+            input_size = os.path.getsize(staging_path)
+            if not check_disk_space(config["work_dir"], input_size, config.get("disk_free_factor", DISK_FREE_FACTOR)):
+                _log.error("Espace disque insuffisant", extra={"stage": "DISK_CHECK"})
+                err_dst = os.path.join(ERROR_DIR, os.path.basename(staging_path))
+                try:
+                    move_atomic(staging_path, err_dst)
+                except Exception:
+                    pass
+                update_metrics(metrics, "disk_error")
+                continue
 
             existing = index["jobs"].get(job_key)
             if existing:
@@ -518,13 +580,33 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
             st = poll_job(config["ocr_url"], job_key)
             if st.get("state") == "DONE":
                 final_pdf = st.get("artifacts", {}).get("finalPdf") or os.path.join(job_dir(job_key), "final.pdf")
+
+                # B3 — Validation PDF avant move vers /out
+                min_pdf = config.get("min_pdf_size_bytes", MIN_PDF_SIZE_BYTES)
+                if not validate_pdf(final_pdf, min_size_bytes=min_pdf):
+                    _log.error("PDF final invalide", extra={"jobKey": job_key, "stage": "OCR_FINALIZE"})
+                    update_state(job_key, {"state": "OCR_ERROR", "step": "OCR", "message": "pdf_invalid"})
+                    meta["stage"] = "OCR_RETRY"
+                    update_metrics(metrics, "pdf_invalid")
+                    continue
+
                 out_pdf = output_path_for(meta["inputName"], job_key)
                 ensure_dir(OUT_DIR)
                 move_atomic(final_pdf, out_pdf)
+                _log.info("Job terminé", extra={"jobKey": job_key, "stage": "DONE"})
                 update_state(job_key, {"state": "DONE", "step": "OCR", "finalPdf": out_pdf})
                 index["jobs"][job_key]["state"] = "DONE"
                 index["jobs"][job_key]["outPdf"] = out_pdf
                 save_index(index, index_path)
+
+                # B5 — Nettoyage workdir immédiat si KEEP_WORK_DIR_DAYS=0
+                keep_days = config.get("keep_work_dir_days", KEEP_WORK_DIR_DAYS)
+                if keep_days == 0:
+                    try:
+                        shutil.rmtree(job_dir(job_key), ignore_errors=True)
+                    except Exception:
+                        pass
+
                 try:
                     ensure_dir(ARCHIVE_DIR)
                     move_atomic(meta["inputPath"], os.path.join(ARCHIVE_DIR, os.path.basename(meta["inputPath"])))
@@ -554,8 +636,10 @@ def process_loop():
     Boucle principale de l'orchestrateur.
     Initialise le layout, récupère les infos de services,
     puis appelle ``process_tick`` en boucle infinie.
+    Démarre également le serveur HTTP d'observabilité et le janitor workdir.
     """
     ensure_layout()
+    _log.info("Orchestrateur démarré")
     prep_info = get_service_info(PREP_URL)
     ocr_info = get_service_info(OCR_URL)
     profile = canonical_profile(prep_info, ocr_info, OCR_LANG)
@@ -576,11 +660,49 @@ def process_loop():
         "job_timeout_s": JOB_TIMEOUT_SECONDS,
         "index_dir": INDEX_DIR,
         "metrics": metrics,
+        # Robustesse FS
+        "keep_work_dir_days": KEEP_WORK_DIR_DAYS,
+        "min_pdf_size_bytes": MIN_PDF_SIZE_BYTES,
+        "disk_free_factor": DISK_FREE_FACTOR,
+        # Hardening
+        "max_input_size_mb": MAX_INPUT_SIZE_MB,
     }
+
+    # Démarrage serveur HTTP observabilité (C)
+    orch_state = OrchestratorState(
+        in_flight=in_flight,
+        metrics=metrics,
+        config=config,
+        work_dir=WORK_DIR,
+        index_path=index_path,
+    )
+    try:
+        start_http_server(orch_state, port=ORCHESTRATOR_HTTP_PORT, bind=ORCHESTRATOR_HTTP_BIND)
+        _log.info(f"Serveur HTTP démarré sur {ORCHESTRATOR_HTTP_BIND}:{ORCHESTRATOR_HTTP_PORT}")
+    except Exception as e:
+        _log.warning(f"Impossible de démarrer le serveur HTTP : {e}")
+
+    # Janitor workdir périodique (B5) — toutes les 600s
+    _janitor_last_run = [0.0]
+
+    def _run_janitor():
+        keep_days = config.get("keep_work_dir_days", KEEP_WORK_DIR_DAYS)
+        if keep_days > 0:
+            running_keys = set(in_flight.keys())
+            deleted = cleanup_old_workdirs(WORK_DIR, keep_days, running_keys)
+            if deleted:
+                _log.info(f"Janitor : {deleted} workdir(s) supprimé(s)")
 
     while True:
         ensure_layout()
         process_tick(in_flight, index, index_path, profile, config)
+
+        # Janitor workdir toutes les 600 secondes
+        now = time.time()
+        if now - _janitor_last_run[0] > 600:
+            _run_janitor()
+            _janitor_last_run[0] = now
+
         time.sleep(POLL_INTERVAL_MS / 1000.0)
 
 

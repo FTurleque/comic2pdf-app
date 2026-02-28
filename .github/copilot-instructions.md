@@ -7,14 +7,46 @@ Trois services Python + une application desktop JavaFX.
 
 ```
 comic2pdf-app/
+├── .github/
+│   ├── copilot-instructions.md
+│   ├── instructions/          # Règles ciblées par zone (prep, ocr, orchestrateur, desktop)
+│   ├── agents/                # Agents de maintenance (services-maintainer, desktop-maintainer)
+│   └── prompts/               # Prompts de tâches réutilisables (12 fichiers)
 ├── services/
-│   ├── prep-service/     # Extraction CBZ/CBR + raw.pdf (7z + img2pdf)
-│   ├── ocr-service/      # OCR raw.pdf → final.pdf (ocrmypdf + Tesseract)
-│   └── orchestrator/     # Watch-folder, pipeline, déduplication, heartbeats, métriques
-├── desktop-app/          # Interface JavaFX : dépôt fichiers + gestion doublons
-├── data/                 # Volume partagé (in/, out/, work/, hold/, reports/, index/)
+│   ├── prep-service/          # Extraction CBZ/CBR + raw.pdf (7z + img2pdf)
+│   │   ├── app/               # core.py, main.py, utils.py
+│   │   ├── tests/             # test_core.py
+│   │   ├── requirements.txt
+│   │   └── requirements-dev.txt
+│   ├── ocr-service/           # OCR raw.pdf → final.pdf (ocrmypdf + Tesseract)
+│   │   ├── app/               # core.py, main.py, utils.py
+│   │   ├── tests/             # test_core.py, test_jobs.py
+│   │   ├── requirements.txt
+│   │   └── requirements-dev.txt
+│   └── orchestrator/          # Watch-folder, pipeline, déduplication, heartbeats, métriques
+│       ├── app/               # core.py, main.py, utils.py
+│       ├── tests/             # test_core.py, test_orchestrator.py
+│       ├── requirements.txt
+│       └── requirements-dev.txt
+├── desktop-app/               # Interface JavaFX : dépôt fichiers + gestion doublons
+│   └── src/main/java/com/fturleque/comic2pdf/desktop/
+│       ├── MainApp.java
+│       ├── MainView.java
+│       ├── DupRow.java
+│       └── duplicates/
+│           ├── DuplicateService.java
+│           └── DuplicateDecision.java
+├── data/                      # Volume partagé
+│   ├── in/                    # Fichiers entrants .cbz/.cbr (ignorer .part)
+│   ├── out/                   # PDF finaux *__job-<jobKey>.pdf
+│   ├── work/                  # Dossiers de travail par jobKey
+│   ├── archive/               # Fichiers sources traités avec succès
+│   ├── error/                 # Fichiers en erreur (MAX_ATTEMPTS dépassé)
+│   ├── hold/duplicates/       # Doublons en attente de décision
+│   ├── reports/duplicates/    # Rapports JSON des doublons
+│   └── index/                 # jobs.json + metrics.json
 ├── docker-compose.yml
-├── run_tests.ps1         # Script PowerShell : tous les tests Python + Java
+├── run_tests.ps1              # Script PowerShell : tous les tests Python + Java
 └── README.md
 ```
 
@@ -46,6 +78,9 @@ Zéro appel Internet. Zéro dépendance cloud.
 | Variable | Service | Défaut |
 |---|---|---|
 | `DATA_DIR` | tous | `/data` |
+| `PREP_URL` | orchestrator | `http://prep-service:8080` |
+| `OCR_URL` | orchestrator | `http://ocr-service:8080` |
+| `POLL_INTERVAL_MS` | orchestrator | `1000` |
 | `PREP_CONCURRENCY` | orchestrator | `2` |
 | `OCR_CONCURRENCY` | orchestrator | `1` |
 | `MAX_JOBS_IN_FLIGHT` | orchestrator | `3` |
@@ -81,9 +116,12 @@ Zéro appel Internet. Zéro dépendance cloud.
 - Persistés dans `data/index/metrics.json` à chaque tick. Zéro Prometheus.
 
 ### 8. Bootstrap non-impactant à l'import
-- Threads workers démarrés **uniquement** dans `@app.on_event("startup")` FastAPI.
-- `requeue_running_on_startup()` appelé dans ce même handler.
-- Import du module seul = zéro effet de bord (testabilité garantie).
+- **prep-service / ocr-service** : threads workers démarrés **uniquement** dans `@app.on_event("startup")` FastAPI (pas à l'import).
+  - `prep-service` : `requeue_running_on_startup()` appelé dans le handler startup.
+  - `ocr-service` : `requeue_running(RUNNING_DIR, QUEUE_DIR)` (de `core.py`) appelé dans le handler startup.
+- **orchestrator** : script pur Python, pas de FastAPI. Démarrage via `if __name__ == "__main__": process_loop()`.
+  - `process_tick()` est la fonction pure testable (sans sleep) ; `process_loop()` la boucle infinie.
+- Import de n'importe quel module = zéro effet de bord (testabilité garantie).
 
 ---
 
@@ -123,11 +161,26 @@ Zéro appel Internet. Zéro dépendance cloud.
 | Fichier | Contenu clé |
 |---|---|
 | `README.md` | Architecture, Docker, instructions tests locaux |
-| `services/prep-service/app/core.py` | `filter_images`, `sort_images`, `images_to_pdf`, `get_tool_versions` |
+| `run_tests.ps1` | Script PowerShell racine : tests Python (pytest) + Java (mvn test) |
+| `services/prep-service/app/core.py` | `filter_images`, `sort_images`, `list_and_sort_images`, `images_to_pdf`, `get_tool_versions` |
+| `services/prep-service/app/main.py` | FastAPI : `/info`, `/jobs/prep`, `/jobs/{id}` — `run_job`, `requeue_running_on_startup` |
+| `services/prep-service/app/utils.py` | `ensure_dir`, `atomic_write_json`, `read_json`, `natural_key`, `now_iso` |
+| `services/prep-service/tests/test_core.py` | tri naturel, filtrage images, smoke test `images_to_pdf` |
 | `services/ocr-service/app/core.py` | `get_tool_versions`, `build_ocrmypdf_cmd`, `requeue_running` |
-| `services/orchestrator/app/core.py` | `canonical_profile`, `make_job_key`, `is_heartbeat_stale`, métriques |
-| `services/orchestrator/app/main.py` | `process_tick`, `check_stale_jobs`, `write_duplicate_report` |
-| `desktop-app/src/.../duplicates/DuplicateService.java` | `listDuplicates`, `writeDecision` |
+| `services/ocr-service/app/main.py` | FastAPI : `/info`, `/jobs/ocr`, `/jobs/{id}` — `run_job`, startup `requeue_running` |
+| `services/ocr-service/app/utils.py` | `ensure_dir`, `atomic_write_json`, `read_json`, `natural_key`, `now_iso` |
+| `services/ocr-service/tests/test_core.py` | `get_tool_versions`, `build_ocrmypdf_cmd`, `requeue_running` (subprocess mocké) |
+| `services/ocr-service/tests/test_jobs.py` | `run_job` OK/ERROR (subprocess mocké) |
+| `services/orchestrator/app/core.py` | `canonical_profile`, `make_job_key`, `is_heartbeat_stale`, `make_empty_metrics`, `update_metrics`, `write_metrics` |
+| `services/orchestrator/app/main.py` | `process_tick`, `process_loop`, `check_stale_jobs`, `write_duplicate_report`, `check_duplicate_decisions` |
+| `services/orchestrator/app/utils.py` | `ensure_dir`, `atomic_write_json`, `read_json`, `sha256_file`, `natural_key`, `now_iso` |
+| `services/orchestrator/tests/test_core.py` | `canonical_profile`, `make_job_key`, `is_heartbeat_stale`, métriques |
+| `services/orchestrator/tests/test_orchestrator.py` | doublons, `check_stale_jobs` (HTTP mocké) |
+| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/DupRow.java` | Modèle JavaFX : `jobKey`, `incomingFile`, `existingState` (StringProperty) |
+| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateDecision.java` | Enum : `USE_EXISTING_RESULT`, `DISCARD`, `FORCE_REPROCESS` |
+| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateService.java` | `listDuplicates(dataDir)`, `writeDecision(dataDir, jobKey, decision)` |
+| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/MainView.java` | Vue JavaFX : délègue à `DuplicateService`, dépôt `.part` → rename atomique |
+| `desktop-app/src/test/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateServiceTest.java` | JUnit 5 : `listDuplicates`, `writeDecision` (filesystem via `@TempDir`) |
 
 ---
 
@@ -136,5 +189,80 @@ Zéro appel Internet. Zéro dépendance cloud.
 - **Suffixe PDF** : `<nom_sans_ext>__job-<jobKey>.pdf` — format figé, ne pas modifier.
 - **`make_job_key(file_hash, profile)`** retourne `(profile_hash, job_key)` — toujours utiliser ce tuple.
 - **`process_tick()`** reçoit tous ses paramètres explicitement (`in_flight`, `index`, `index_path`, `profile`, `config`) — pas de globals dans les tests.
+- **`check_duplicate_decisions(index, index_path)`** lit `hold/duplicates/<jobKey>/decision.json` à chaque tick et applique l'action (`USE_EXISTING_RESULT`, `DISCARD`, `FORCE_REPROCESS`).
+- **Requeue au boot** : `prep-service` → `requeue_running_on_startup()` dans `main.py` ; `ocr-service` → `requeue_running(RUNNING_DIR, QUEUE_DIR)` depuis `core.py`. Politique recalcul complet (aucun artefact réutilisé).
 - **Desktop** : `MainView` délègue à `DuplicateService`. Toute logique filesystem reste dans le service pur.
+- **Dépôt desktop** : `MainView.depositFile()` copie en `.part` puis renomme atomiquement (`Files.move` avec `ATOMIC_MOVE`) — ne jamais lire un `.part`.
+
+---
+
+## Tests locaux (sans Docker)
+
+### Prérequis
+- Python 3.12 (`python --version`)
+- pip (`pip --version`)
+- Maven 3.9+ (`mvn --version`)
+- Java 21 (`java --version`)
+
+### Par service Python
+
+```powershell
+# prep-service
+cd services\prep-service
+python -m venv .venv ; .\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pytest -q
+
+# ocr-service  (ocrmypdf s'installe via pip ; binaires tesseract/gs non requis pour les tests)
+cd ..\ocr-service
+python -m venv .venv ; .\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pytest -q
+
+# orchestrator
+cd ..\orchestrator
+python -m venv .venv ; .\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+### Java (desktop-app)
+
+```powershell
+cd desktop-app
+mvn test
+```
+
+### Script global
+
+```powershell
+# Depuis la racine du dépôt
+.\run_tests.ps1
+```
+
+Le script installe les dépendances dev de chaque service, lance `pytest -q` dans chaque service Python,
+puis `mvn -q test` dans `desktop-app`. Affiche un résumé coloré (PASS/FAIL) et retourne `exit 1` si un lot échoue.
+
+---
+
+## Configuration IA (`.github/`)
+
+### Instructions ciblées (`.github/instructions/`)
+| Fichier | Zone couverte |
+|---|---|
+| `prep-service.instructions.md` | `services/prep-service/**` |
+| `ocr-service.instructions.md` | `services/ocr-service/**` |
+| `orchestrator.instructions.md` | `services/orchestrator/**` |
+| `desktop-app.instructions.md` | `desktop-app/**` |
+
+### Agents (`.github/agents/`)
+| Agent | Rôle |
+|---|---|
+| `services-maintainer.agent.md` | Maintenance des 3 services Python (prep, ocr, orchestrator) |
+| `desktop-maintainer.agent.md` | Maintenance de l'application JavaFX |
+
+### Prompts (`.github/prompts/`)
+`add-heartbeat-check` · `add-service` · `cli-and-local-mode` · `desktop-enhancements`
+· `functional-improvements` · `new-metric` · `observability` · `packaging-and-ux`
+· `robust-fs` · `security-hardening` · `testing-and-benchmarks` · `update-desktop-ui`
 

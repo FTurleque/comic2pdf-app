@@ -114,13 +114,37 @@ def is_heartbeat_stale(hb_path: str, timeout_s: int, absent_timeout_s: Optional[
 # Métriques
 # ---------------------------------------------------------------------------
 
+# Whitelist complète des compteurs supportés
+_METRIC_KEYS = frozenset({
+    "done", "error", "running", "queued",
+    "disk_error", "pdf_invalid", "input_rejected_size", "input_rejected_signature",
+})
+
+
 def make_empty_metrics() -> dict:
     """
     Retourne un dict de métriques initialisé à zéro.
 
-    :return: Dict ``{"done": 0, "error": 0, "running": 0, "queued": 0, "updatedAt": ""}``.
+    Compteurs :
+    - done, error, running, queued (pipeline)
+    - disk_error (espace disque insuffisant avant PREP)
+    - pdf_invalid (PDF final invalide après OCR)
+    - input_rejected_size (fichier entrant trop grand)
+    - input_rejected_signature (signature ZIP/RAR invalide)
+
+    :return: Dict de métriques initialisé.
     """
-    return {"done": 0, "error": 0, "running": 0, "queued": 0, "updatedAt": ""}
+    return {
+        "done": 0,
+        "error": 0,
+        "running": 0,
+        "queued": 0,
+        "disk_error": 0,
+        "pdf_invalid": 0,
+        "input_rejected_size": 0,
+        "input_rejected_signature": 0,
+        "updatedAt": "",
+    }
 
 
 def update_metrics(metrics: dict, event: str) -> dict:
@@ -128,14 +152,16 @@ def update_metrics(metrics: dict, event: str) -> dict:
     Incrémente le compteur correspondant à ``event`` dans le dict de métriques.
     Retourne le même dict (mutation in-place + retour pour faciliter les tests).
 
-    Événements supportés : ``"done"``, ``"error"``, ``"running"``, ``"queued"``.
+    Événements supportés : ``"done"``, ``"error"``, ``"running"``, ``"queued"``,,
+    ``"disk_error"``, ``"pdf_invalid"``, ``"input_rejected_size"``,,
+    ``"input_rejected_signature"``.
     Les événements inconnus sont ignorés.
 
     :param metrics: Dict de métriques courant.
     :param event: Nom du compteur à incrémenter.
     :return: Dict de métriques mis à jour.
     """
-    if event in metrics:
+    if event in _METRIC_KEYS and event in metrics:
         metrics[event] += 1
     metrics["updatedAt"] = now_iso()
     return metrics

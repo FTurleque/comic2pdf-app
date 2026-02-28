@@ -179,6 +179,11 @@ class TestMetrics:
         assert m["error"] == 0
         assert m["running"] == 0
         assert m["queued"] == 0
+        # Nouvelles métriques
+        assert m["disk_error"] == 0
+        assert m["pdf_invalid"] == 0
+        assert m["input_rejected_size"] == 0
+        assert m["input_rejected_signature"] == 0
 
     def test_update_incremente_compteur_done(self):
         """update_metrics("done") incrémente uniquement le compteur done."""
@@ -193,6 +198,30 @@ class TestMetrics:
         update_metrics(m, "error")
         assert m["error"] == 1
         assert m["done"] == 0
+
+    def test_update_incremente_disk_error(self):
+        """update_metrics("disk_error") incrémente uniquement disk_error."""
+        m = make_empty_metrics()
+        update_metrics(m, "disk_error")
+        assert m["disk_error"] == 1
+
+    def test_update_incremente_pdf_invalid(self):
+        """update_metrics("pdf_invalid") incrémente uniquement pdf_invalid."""
+        m = make_empty_metrics()
+        update_metrics(m, "pdf_invalid")
+        assert m["pdf_invalid"] == 1
+
+    def test_update_incremente_input_rejected_size(self):
+        """update_metrics("input_rejected_size") incrémente le bon compteur."""
+        m = make_empty_metrics()
+        update_metrics(m, "input_rejected_size")
+        assert m["input_rejected_size"] == 1
+
+    def test_update_incremente_input_rejected_signature(self):
+        """update_metrics("input_rejected_signature") incrémente le bon compteur."""
+        m = make_empty_metrics()
+        update_metrics(m, "input_rejected_signature")
+        assert m["input_rejected_signature"] == 1
 
     def test_update_evenement_inconnu_ignore(self):
         """Un événement inconnu est ignoré (aucun crash)."""
