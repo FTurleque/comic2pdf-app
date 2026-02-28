@@ -1,0 +1,127 @@
+# Documentation développeur — comic2pdf-app
+
+Bienvenue dans la documentation technique de **comic2pdf-app**. Ce guide s'adresse aux développeurs souhaitant contribuer, maintenir ou étendre le projet.
+
+---
+
+## Architecture globale
+
+`comic2pdf-app` est composé de **3 services Python** orchestrés par un watch-folder, et d'une **application desktop JavaFX** pour l'interface utilisateur.
+
+```
+comic2pdf-app/
+├── services/
+│   ├── prep-service/      # Extraction CBZ/CBR → raw.pdf  (7z + img2pdf)
+│   ├── ocr-service/       # OCR raw.pdf → final.pdf        (ocrmypdf + Tesseract)
+│   └── orchestrator/      # Watch-folder + pipeline + dédup + heartbeats + métriques + HTTP
+├── desktop-app/           # Interface JavaFX (3 onglets : Doublons / Jobs / Configuration)
+├── data/                  # Volume partagé Docker (monté dans chaque service)
+├── docker-compose.yml
+├── run_tests.ps1          # Script global : pytest × 3 + mvn test
+└── README.md
+```
+
+---
+
+## Diagramme du flux de données
+
+```mermaid
+graph LR
+    A["data/in/*.cbz|cbr"] --> B["orchestrator\nwatch-folder\n(tick toutes les POLL_INTERVAL_MS ms)"]
+    B --> C{jobKey\ndans index ?}
+    C -->|Non| D["prep-service:8080\nPOST /jobs/prep\n→ raw.pdf"]
+    C -->|Oui - doublon| E["data/hold/duplicates/<jobKey>/\n+ data/reports/duplicates/<jobKey>.json"]
+    D --> F["ocr-service:8080\nPOST /jobs/ocr\n→ final.pdf"]
+    F --> G["validate_pdf()"]
+    G -->|Valide| H["data/out/\nnom__job-jobKey.pdf"]
+    G -->|Invalide| I["OCR_RETRY\n(max 3 tentatives)"]
+    E --> J["Desktop JavaFX\nOnglet Doublons"]
+    J --> K{Décision\nutilisateur}
+    K -->|USE_EXISTING_RESULT| H
+    K -->|DISCARD| L["Supprimer\nfichier entrant"]
+    K -->|FORCE_REPROCESS| A
+```
+
+---
+
+## Répertoires clés et leur rôle
+
+| Répertoire | Service | Rôle |
+|---|---|---|
+| `services/prep-service/app/core.py` | prep | Filtrage images, tri naturel, conversion en PDF |
+| `services/prep-service/app/main.py` | prep | FastAPI : endpoints `/info`, `/jobs/prep`, `/jobs/{id}` |
+| `services/prep-service/app/utils.py` | prep | Fonctions filesystem partagées |
+| `services/ocr-service/app/core.py` | ocr | Construction commande ocrmypdf, requeue au boot |
+| `services/ocr-service/app/main.py` | ocr | FastAPI : endpoints `/info`, `/jobs/ocr`, `/jobs/{id}` |
+| `services/orchestrator/app/core.py` | orch | jobKey, heartbeat, métriques, profil canonique |
+| `services/orchestrator/app/main.py` | orch | `process_tick()`, `process_loop()`, doublons, stale jobs |
+| `services/orchestrator/app/http_server.py` | orch | Serveur HTTP stdlib : `/metrics`, `/jobs`, `/config` |
+| `services/orchestrator/app/utils.py` | orch | `sha256_file`, `atomic_write_json`, `validate_pdf`, etc. |
+| `desktop-app/src/.../MainApp.java` | desktop | Point d'entrée JavaFX, TabPane 3 onglets |
+| `desktop-app/src/.../MainView.java` | desktop | Onglet Doublons, dépôt fichier atomique |
+| `desktop-app/src/.../JobsView.java` | desktop | Onglet Jobs, ScheduledService refresh 3s |
+| `desktop-app/src/.../OrchestratorClient.java` | desktop | Client HTTP stdlib Java vers orchestrateur |
+| `desktop-app/src/.../config/` | desktop | `AppConfig`, `ConfigService`, `ConfigView` |
+| `desktop-app/src/.../duplicates/` | desktop | `DuplicateService`, `DuplicateDecision`, `DupRow` |
+
+---
+
+## Conventions de nommage
+
+| Contexte | Convention | Exemples |
+|---|---|---|
+| Python — fonctions/variables | `snake_case` | `make_job_key`, `job_timeout_s` |
+| Python — constantes de module | `UPPER_CASE` | `MAX_ATTEMPTS_PREP`, `DATA_DIR` |
+| Python — modules/fichiers | `snake_case` | `core.py`, `http_server.py` |
+| Java — classes/interfaces | `PascalCase` | `DuplicateService`, `OrchestratorClient` |
+| Java — méthodes/champs | `camelCase` | `listDuplicates`, `jobKey` |
+| Java — constantes | `UPPER_CASE` | `MAX_RETRY`, `DEFAULT_URL` |
+| JSON — clés d'état | `camelCase` | `jobKey`, `updatedAt`, `rawPdf` |
+| Fichiers data | `snake_case` | `prep.heartbeat`, `state.json` |
+| DB (si future) | `snake_case` | `provider_key`, `barcode_norm` |
+
+---
+
+## Séparation des responsabilités
+
+### Couche Desktop
+
+```
+MainApp (point d'entrée)
+  ├── MainView           → délègue à DuplicateService (logique filesystem)
+  ├── JobsView           → délègue à OrchestratorClient (HTTP)
+  └── ConfigView         → délègue à ConfigService (persistance) + OrchestratorClient (POST /config)
+```
+
+**Règles** :
+- `MainView`, `JobsView`, `ConfigView` : **zéro logique métier** — uniquement UI et délégation
+- `DuplicateService` : logique filesystem doublons, **zéro JavaFX**
+- `OrchestratorClient` : HTTP pur, **zéro JavaFX**, **zéro logique métier**
+- `ConfigService` : persistance `config.json`, **zéro JavaFX**
+
+### Couche Services Python
+
+```
+main.py     → FastAPI / boucle principale, startup, routing
+core.py     → logique métier pure et testable (pas d'effets de bord à l'import)
+utils.py    → fonctions filesystem réutilisables
+logger.py   → configuration logging (JSON ou texte selon LOG_JSON)
+```
+
+---
+
+## Liens vers la documentation développeur détaillée
+
+| Document | Description |
+|---|---|
+| [setup.md](setup.md) | Setup Python/Java, variables d'environnement complètes, ports |
+| [testing.md](testing.md) | Tests Python (pytest) + Java (JUnit 5), stratégie de mock |
+| [operations.md](operations.md) | Observabilité HTTP, métriques, logs structurés, janitor |
+| [contributing.md](contributing.md) | Invariants, SOLID, checklist PR, conventions |
+
+---
+
+## Retour à la documentation principale
+
+[← Retour à docs/README.md](../README.md)
+

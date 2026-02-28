@@ -1,5 +1,7 @@
 # Comic2PDF (CBR/CBZ -> PDF searchable)
 
+> 📚 **Documentation complète** : [docs/README.md](docs/README.md)
+
 Objectif : convertir des fichiers `.cbr` / `.cbz` en **PDF avec texte sélectionnable** (OCR) via une chaîne **Docker** fiable.
 
 ## 1) Prérequis
