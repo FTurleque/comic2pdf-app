@@ -109,11 +109,11 @@ mvn -q javafx:run
 ## 5. Fichiers modifiés / chemins pertinents
 
 - `desktop-app/pom.xml`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/MainApp.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/MainView.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/JobsView.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/config/ConfigView.java`
-- `desktop-app/src/test/java/com/fturleque/comic2pdf/desktop/ui/` (5 fichiers)
+- `desktop-app/src/main/java/com/comic2pdf/desktop/MainApp.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/MainView.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/JobsView.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/config/ConfigView.java`
+- `desktop-app/src/test/java/com/comic2pdf/desktop/ui/` (5 fichiers)
 - `scripts/` (10 fichiers)
 - `docs/dev/testing.md`
 - `docs/dev/setup.md`

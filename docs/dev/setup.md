@@ -254,7 +254,7 @@ cd desktop-app
 mvn -q javafx:run
 ```
 
-> **Rappel** : `ORCHESTRATOR_URL` est lu via `System.getenv()` dans [OrchestratorClient.java](../desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/OrchestratorClient.java).
+> **Rappel** : `ORCHESTRATOR_URL` est lu via `System.getenv()` dans [OrchestratorClient.java](../desktop-app/src/main/java/com/comic2pdf/desktop/OrchestratorClient.java).
 > Utiliser une variable d'environnement, **jamais** une propriété `-D`.
 
 ---

@@ -8,7 +8,7 @@
   IDs stables compatibles tests UI : #jobsRefreshBtn, #jobsTable
 -->
 <BorderPane xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.JobsController">
+            fx:controller="com.comic2pdf.desktop.ui.controller.JobsController">
     <top>
         <HBox spacing="8" alignment="CENTER_LEFT">
             <padding><Insets top="5" right="5" bottom="5" left="5"/></padding>

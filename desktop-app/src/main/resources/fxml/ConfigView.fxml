@@ -11,7 +11,7 @@
   via SpinnerValueFactory (les valeurs seraient écrasées par loadConfig() de toute façon).
 -->
 <VBox xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.ConfigController"
+      fx:controller="com.comic2pdf.desktop.ui.controller.ConfigController"
       spacing="12">
     <padding><Insets top="16" right="16" bottom="16" left="16"/></padding>
     <Label text="Configuration" style="-fx-font-weight: bold; -fx-font-size: 14;"/>

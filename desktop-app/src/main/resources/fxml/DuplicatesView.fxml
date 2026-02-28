@@ -8,7 +8,7 @@
   IDs stables compatibles tests UI : #dataDirField, #duplicatesRefreshBtn, #duplicatesTable
 -->
 <BorderPane xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.DuplicatesController">
+            fx:controller="com.comic2pdf.desktop.ui.controller.DuplicatesController">
     <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
     <top>
         <VBox spacing="8">

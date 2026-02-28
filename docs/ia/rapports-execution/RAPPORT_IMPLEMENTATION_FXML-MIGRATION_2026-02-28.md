@@ -129,13 +129,13 @@ mvn -Pui-tests test -Dtestfx.headless=true -Dprism.order=sw
 
 ## 8. Fichiers modifiés — chemins pertinents
 
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/MainApp.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/service/AppServices.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/util/FxUtils.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/ui/controller/` (4 fichiers)
+- `desktop-app/src/main/java/com/comic2pdf/desktop/MainApp.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/service/AppServices.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/util/FxUtils.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/ui/controller/` (4 fichiers)
 - `desktop-app/src/main/resources/fxml/` (4 fichiers FXML)
-- `desktop-app/src/test/java/com/fturleque/comic2pdf/desktop/ui/TestableMainApp.java`
-- `desktop-app/src/test/java/com/fturleque/comic2pdf/desktop/ui/*.java` (4 fichiers — signature)
+- `desktop-app/src/test/java/com/comic2pdf/desktop/ui/TestableMainApp.java`
+- `desktop-app/src/test/java/com/comic2pdf/desktop/ui/*.java` (4 fichiers — signature)
 
 ---
 

@@ -10,7 +10,7 @@
 -->
 <TabPane fx:id="mainTabs"
          xmlns:fx="http://javafx.com/fxml/1"
-         fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.MainController"
+         fx:controller="com.comic2pdf.desktop.ui.controller.MainController"
          tabClosingPolicy="UNAVAILABLE">
     <tabs>
         <Tab fx:id="tabDuplicates" text="Doublons">
