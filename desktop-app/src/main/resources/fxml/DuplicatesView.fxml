@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<!--
+  DuplicatesView.fxml — Onglet Doublons.
+  IDs stables compatibles tests UI : #dataDirField, #duplicatesRefreshBtn, #duplicatesTable
+-->
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.DuplicatesController">
+    <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+    <top>
+        <VBox spacing="8">
+            <HBox spacing="8" alignment="CENTER_LEFT">
+                <padding><Insets top="5" right="5" bottom="5" left="5"/></padding>
+                <Label text="DATA:"/>
+                <TextField fx:id="dataDirField" prefColumnCount="60"/>
+                <Button text="Choisir dossier data/" onAction="#onChooseDataDir"/>
+                <Button fx:id="duplicatesRefreshBtn" text="Rafraîchir doublons"
+                        onAction="#onRefreshDuplicates"/>
+                <Button text="Ouvrir in/" onAction="#onOpenInFolder"/>
+                <Button text="Ouvrir out/" onAction="#onOpenOutFolder"/>
+            </HBox>
+            <HBox spacing="12" alignment="CENTER_LEFT">
+                <padding><Insets top="5" right="5" bottom="5" left="5"/></padding>
+                <Button text="Déposer un CBR/CBZ..." onAction="#onDepositFile"/>
+                <Label text="Dépôt: copie en .part puis rename en .cbz/.cbr (fiable)."/>
+            </HBox>
+        </VBox>
+    </top>
+    <center>
+        <VBox spacing="8">
+            <padding><Insets top="10" right="5" bottom="10" left="5"/></padding>
+            <Label text="Doublons en attente (DUPLICATE_PENDING)"/>
+            <TableView fx:id="duplicatesTable">
+                <VBox.vgrow>ALWAYS</VBox.vgrow>
+                <placeholder><Label text="Aucun doublon en attente."/></placeholder>
+            </TableView>
+        </VBox>
+    </center>
+    <bottom>
+        <HBox>
+            <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+            <Label fx:id="duplicatesStatusLabel" text="Prêt."/>
+        </HBox>
+    </bottom>
+</BorderPane>

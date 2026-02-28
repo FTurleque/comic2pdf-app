@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<!--
+  JobsView.fxml — Onglet Jobs.
+  IDs stables compatibles tests UI : #jobsRefreshBtn, #jobsTable
+-->
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.JobsController">
+    <top>
+        <HBox spacing="8" alignment="CENTER_LEFT">
+            <padding><Insets top="5" right="5" bottom="5" left="5"/></padding>
+            <Button fx:id="jobsRefreshBtn" text="Rafraîchir maintenant"
+                    onAction="#onRefreshJobs"/>
+            <Button text="Ouvrir dossier out/" onAction="#onOpenOutDir"/>
+        </HBox>
+    </top>
+    <center>
+        <VBox spacing="8">
+            <padding><Insets top="5" right="5" bottom="5" left="5"/></padding>
+            <Label text="Jobs de l'orchestrateur"/>
+            <TableView fx:id="jobsTable">
+                <VBox.vgrow>ALWAYS</VBox.vgrow>
+                <placeholder>
+                    <Label text="Aucun job. Vérifier la connexion à l'orchestrateur."/>
+                </placeholder>
+            </TableView>
+        </VBox>
+    </center>
+    <bottom>
+        <HBox>
+            <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+            <Label fx:id="jobsStatusLabel" text="En attente..."/>
+        </HBox>
+    </bottom>
+</BorderPane>

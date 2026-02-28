@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<!--
+  MainView.fxml — Vue principale : TabPane 3 onglets via fx:include.
+  IDs stables : #mainTabs, #tabDuplicates, #tabJobs, #tabConfig
+  Convention JavaFX : <fx:include fx:id="duplicatesView"> génère automatiquement
+  @FXML DuplicatesController duplicatesViewController dans MainController.
+-->
+<TabPane fx:id="mainTabs"
+         xmlns:fx="http://javafx.com/fxml/1"
+         fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.MainController"
+         tabClosingPolicy="UNAVAILABLE">
+    <tabs>
+        <Tab fx:id="tabDuplicates" text="Doublons">
+            <content>
+                <fx:include fx:id="duplicatesView" source="DuplicatesView.fxml"/>
+            </content>
+        </Tab>
+        <Tab fx:id="tabJobs" text="Jobs">
+            <content>
+                <fx:include fx:id="jobsView" source="JobsView.fxml"/>
+            </content>
+        </Tab>
+        <Tab fx:id="tabConfig" text="Configuration">
+            <content>
+                <fx:include fx:id="configView" source="ConfigView.fxml"/>
+            </content>
+        </Tab>
+    </tabs>
+</TabPane>

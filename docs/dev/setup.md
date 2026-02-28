@@ -159,9 +159,34 @@ docker compose logs --follow
 
 ---
 
+### Architecture UI desktop (FXML + Controllers)
+
+L'interface est construite via JavaFX FXML (depuis la migration 2026-02-28) :
+
+```
+MainApp.start()
+  └── FXMLLoader → src/main/resources/fxml/MainView.fxml
+        ├── <fx:include> → DuplicatesView.fxml → DuplicatesController
+        ├── <fx:include> → JobsView.fxml → JobsController
+        └── <fx:include> → ConfigView.fxml → ConfigController
+
+Injection des services (sans ServiceLocator) :
+  MainApp crée AppServices.createDefault()
+  → MainController.setServices(services)
+  → propagé aux 3 sous-controllers via setters
+```
+
+**Packages clés :**
+- `...service.AppServices` — container DI (OrchestratorClient + DuplicateService + ConfigService)
+- `...ui.controller.*` — 4 controllers FXML
+- `...util.FxUtils` — helpers UI statiques (openDirectory, showError)
+
+---
+
 ### Lancement via IntelliJ (Run/Debug)
 
 #### 1. Import Maven
+
 
 1. Ouvrir le dossier racine `comic2pdf-app/` dans IntelliJ IDEA
 2. IntelliJ détecte automatiquement `desktop-app/pom.xml`

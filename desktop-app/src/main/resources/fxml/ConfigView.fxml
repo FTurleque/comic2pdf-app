@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<!--
+  ConfigView.fxml — Onglet Configuration.
+  IDs stables compatibles tests UI :
+    #orchestratorUrlField, #applyConfigBtn, #configStatusLabel
+  Spinners sans valeurs initiales : initialisés dans ConfigController.initialize()
+  via SpinnerValueFactory (les valeurs seraient écrasées par loadConfig() de toute façon).
+-->
+<VBox xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.fturleque.comic2pdf.desktop.ui.controller.ConfigController"
+      spacing="12">
+    <padding><Insets top="16" right="16" bottom="16" left="16"/></padding>
+    <Label text="Configuration" style="-fx-font-weight: bold; -fx-font-size: 14;"/>
+    <Separator/>
+    <GridPane hgap="12" vgap="8">
+        <Label text="URL orchestrateur :" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+        <TextField fx:id="orchestratorUrlField" prefColumnCount="40"
+                   GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+
+        <Label text="PREP_CONCURRENCY :" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+        <Spinner fx:id="prepConcurrencySpinner" editable="true"
+                 GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+
+        <Label text="OCR_CONCURRENCY :" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+        <Spinner fx:id="ocrConcurrencySpinner" editable="true"
+                 GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+
+        <Label text="Timeout job (s) :" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+        <Spinner fx:id="timeoutSecondsSpinner" editable="true"
+                 GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+
+        <Label text="Langue OCR :" GridPane.columnIndex="0" GridPane.rowIndex="4"/>
+        <TextField fx:id="defaultOcrLangField" prefColumnCount="20"
+                   GridPane.columnIndex="1" GridPane.rowIndex="4"/>
+    </GridPane>
+    <HBox spacing="8">
+        <Button fx:id="applyConfigBtn" text="Appliquer" defaultButton="true"
+                onAction="#onApplyConfig"/>
+        <Button text="Recharger" onAction="#onReloadConfig"/>
+    </HBox>
+    <Label fx:id="configStatusLabel"/>
+</VBox>

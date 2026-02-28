@@ -52,7 +52,7 @@ class JobsUiTest extends ApplicationTest {
     }
 
     @Override
-    public void start(Stage stage) {
+    public void start(Stage stage) throws Exception {
         new TestableMainApp().start(stage);
     }
 
