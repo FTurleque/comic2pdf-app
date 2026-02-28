@@ -399,6 +399,12 @@ class MonServiceTest {
 
 ---
 
+> **Licences** : les outils système requis en production Docker (Ghostscript AGPL-3.0, Tesseract Apache-2.0,
+> 7-Zip/p7zip-full) **ne sont pas nécessaires pour les tests** (subprocess entièrement mocké).
+> Pour les obligations de licence lors d'une distribution, voir [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
+
+---
+
 ## Retour
 
 [← Retour à la documentation développeur](README.md)

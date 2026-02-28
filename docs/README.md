@@ -80,4 +80,18 @@ Politique complète : [`.github/instructions/reports-docs.instructions.md`](../.
 | Opérations & observabilité | [docs/dev/operations.md](dev/operations.md) |
 | Contribution | [docs/dev/contributing.md](dev/contributing.md) |
 | README racine | [README.md](../README.md) |
+| Licence (MIT) | [LICENSE](../LICENSE) · [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) |
+
+---
+
+## Licence
+
+Ce projet est distribué sous **licence MIT** — voir [`LICENSE`](../LICENSE).
+
+Les composants tiers (Ghostscript, Tesseract, 7-Zip, OCRmyPDF, OpenJFX, etc.) et leurs licences
+sont listés dans [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
+
+> ⚠️ **Ghostscript (AGPL-3.0)** peut imposer des obligations de distribution du code source
+> lors de la redistribution d'un binaire dérivé — voir [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
+
 

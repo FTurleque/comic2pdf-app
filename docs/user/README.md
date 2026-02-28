@@ -99,6 +99,18 @@ ERROR_PREP / ERROR_OCR / ERROR  (tentatives épuisées)
 
 ---
 
+## Licence
+
+Ce projet est distribué sous **licence MIT** — voir [`LICENSE`](../../LICENSE).
+
+Les composants tiers (Ghostscript, Tesseract, 7-Zip, OCRmyPDF, etc.) ont leurs propres licences,
+listées dans [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
+
+> ⚠️ **Ghostscript (AGPL-3.0)** peut imposer des obligations de distribution du code source
+> lors de la redistribution — voir [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
+
+---
+
 ## Retour à la documentation principale
 
 [← Retour à docs/README.md](../README.md)

@@ -351,6 +351,12 @@ python app/main.py
 
 ---
 
+> **Licences** : les outils système installés dans les conteneurs Docker (Ghostscript AGPL-3.0, 7-Zip/p7zip-full,
+> Tesseract Apache-2.0) ont leurs propres licences — voir [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
+> ⚠️ Ghostscript (AGPL-3.0) peut imposer des obligations lors de la redistribution d'un binaire dérivé.
+
+---
+
 ## Retour
 
 [← Retour à la documentation développeur](README.md)

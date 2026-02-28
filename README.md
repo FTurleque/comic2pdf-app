@@ -2,6 +2,8 @@
 
 > 📚 **Documentation complète** : [docs/README.md](docs/README.md)
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 Objectif : convertir des fichiers `.cbr` / `.cbz` en **PDF avec texte sélectionnable** (OCR) via une chaîne **Docker** fiable.
 
 ## 1) Prérequis
@@ -290,4 +292,15 @@ Ce mode est **intentionnellement reporté** à une prochaine itération pour :
 - Garantir la stabilité du pipeline Docker actuel
 - Permettre de valider les abstractions nécessaires (fonctions pures partagées)
 
+---
 
+## License
+
+This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
+
+Third-party components (Ghostscript, Tesseract, 7-Zip, OCRmyPDF, OpenJFX, etc.)
+are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) with their respective licenses.
+
+> ⚠️ **Ghostscript (AGPL-3.0)** may impose source code distribution obligations
+> when redistributing a derived binary — see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+> for the full disclaimer and distribution notes.

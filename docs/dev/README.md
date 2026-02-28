@@ -121,6 +121,19 @@ logger.py   → configuration logging (JSON ou texte selon LOG_JSON)
 
 ---
 
+## Licence
+
+Ce projet est distribué sous **licence MIT** — voir [`LICENSE`](../../LICENSE).
+
+Les composants tiers (Ghostscript, Tesseract, 7-Zip, OCRmyPDF, OpenJFX, etc.) ont leurs propres licences,
+listées dans [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
+
+> ⚠️ **Ghostscript (AGPL-3.0)** : installé dans l'image Docker `ocr-service`, peut imposer des
+> obligations de distribution du code source lors de la redistribution d'un binaire dérivé.
+> Voir [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) pour le disclaimer complet.
+
+---
+
 ## Retour à la documentation principale
 
 [← Retour à docs/README.md](../README.md)
