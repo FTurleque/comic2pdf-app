@@ -1,6 +1,6 @@
 package com.comic2pdf.desktop.ui.controller;
 
-import com.comic2pdf.desktop.JobRow;
+import com.comic2pdf.desktop.model.JobRow;
 import com.comic2pdf.desktop.service.AppServices;
 import com.comic2pdf.desktop.util.FxUtils;
 import javafx.application.Platform;

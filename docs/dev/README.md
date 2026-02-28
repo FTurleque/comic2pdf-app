@@ -110,6 +110,41 @@ logger.py   → configuration logging (JSON ou texte selon LOG_JSON)
 
 ---
 
+## Structure des packages `desktop-app`
+
+Depuis le refactoring du 2026-03-01, le module JavaFX suit une architecture MVC propre :
+
+```
+com.comic2pdf.desktop
+  ├── MainApp.java                   # Point d'entrée JavaFX
+  ├── client/
+  │   └── OrchestratorClient.java    # Client HTTP vers l'API orchestrateur
+  ├── service/
+  │   ├── AppServices.java           # Conteneur de services (injecté dans les controllers)
+  │   └── DuplicateService.java      # Logique filesystem doublons (testable sans FX)
+  ├── config/
+  │   ├── AppConfig.java             # POJO de configuration persistée
+  │   └── ConfigService.java         # Lecture/écriture config.json (AppData/home)
+  ├── model/
+  │   ├── DupRow.java                # ViewModel JavaFX — ligne de doublon
+  │   ├── JobRow.java                # ViewModel JavaFX — ligne de job
+  │   └── DuplicateDecision.java     # Enum : USE_EXISTING_RESULT | DISCARD | FORCE_REPROCESS
+  ├── ui/controller/
+  │   ├── MainController.java        # Controller racine (TabPane + fx:include)
+  │   ├── DuplicatesController.java  # Onglet Doublons
+  │   ├── JobsController.java        # Onglet Jobs (avec auto-refresh)
+  │   └── ConfigController.java      # Onglet Configuration
+  └── util/
+      └── FxUtils.java               # Utilitaires UI partagés (openDirectory, showError…)
+```
+
+> Les anciens packages `com.comic2pdf.desktop.DupRow`, `JobRow`, `OrchestratorClient`
+> et `com.comic2pdf.desktop.duplicates.*` existent encore comme **stubs `@Deprecated`**
+> pour la compatibilité descendante. Ils seront supprimés lors du prochain cycle de cleanup.
+> Voir `docs/ia/rapports-execution/RAPPORT_IMPLEMENTATION_2026-03-01.md`.
+
+---
+
 ## Liens vers la documentation développeur détaillée
 
 | Document | Description |

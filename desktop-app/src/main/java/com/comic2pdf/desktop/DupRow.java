@@ -1,26 +1,20 @@
 package com.comic2pdf.desktop;
 
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
+/**
+ * Compat stub — délègue vers {@link com.comic2pdf.desktop.model.DupRow}.
+ * À supprimer après migration complète des imports.
+ *
+ * @deprecated Utiliser {@link com.comic2pdf.desktop.model.DupRow}.
+ */
+@Deprecated(since = "2026-03", forRemoval = true)
+public class DupRow extends com.comic2pdf.desktop.model.DupRow {
 
-public class DupRow {
-    private final StringProperty jobKey = new SimpleStringProperty();
-    private final StringProperty incomingFile = new SimpleStringProperty();
-    private final StringProperty existingState = new SimpleStringProperty();
-
+    /**
+     * @param jobKey        Clé unique du job doublon.
+     * @param incomingFile  Nom du fichier entrant.
+     * @param existingState État du job existant.
+     */
     public DupRow(String jobKey, String incomingFile, String existingState) {
-        this.jobKey.set(jobKey);
-        this.incomingFile.set(incomingFile);
-        this.existingState.set(existingState);
+        super(jobKey, incomingFile, existingState);
     }
-
-    public String getJobKey() { return jobKey.get(); }
-    public StringProperty jobKeyProperty() { return jobKey; }
-
-    public String getIncomingFile() { return incomingFile.get(); }
-    public StringProperty incomingFileProperty() { return incomingFile; }
-
-    public String getExistingState() { return existingState.get(); }
-    public StringProperty existingStateProperty() { return existingState; }
 }
-

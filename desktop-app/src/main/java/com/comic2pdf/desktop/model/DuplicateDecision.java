@@ -1,10 +1,8 @@
-package com.comic2pdf.desktop.duplicates;
+package com.comic2pdf.desktop.model;
 
 /**
- * @deprecated Compat stub — utiliser {@link com.comic2pdf.desktop.model.DuplicateDecision}.
- *             À supprimer après migration complète des imports.
+ * Actions disponibles pour résoudre un doublon détecté.
  */
-@Deprecated(since = "2026-03", forRemoval = true)
 public enum DuplicateDecision {
     /** Réutiliser le PDF déjà produit pour ce jobKey. */
     USE_EXISTING_RESULT,
@@ -13,3 +11,4 @@ public enum DuplicateDecision {
     /** Forcer un retraitement complet avec un nouveau nonce. */
     FORCE_REPROCESS
 }
+
