@@ -1,4 +1,4 @@
-package com.comic2pdf.desktop.duplicates;
+package com.comic2pdf.desktop.model;
 
 /**
  * Actions disponibles pour résoudre un doublon détecté.

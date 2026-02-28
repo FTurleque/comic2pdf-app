@@ -1,8 +1,8 @@
 package com.comic2pdf.desktop.service;
 
-import com.comic2pdf.desktop.OrchestratorClient;
+import com.comic2pdf.desktop.client.OrchestratorClient;
 import com.comic2pdf.desktop.config.ConfigService;
-import com.comic2pdf.desktop.duplicates.DuplicateService;
+import com.comic2pdf.desktop.service.DuplicateService;
 
 import java.nio.file.Paths;
 import java.util.Optional;

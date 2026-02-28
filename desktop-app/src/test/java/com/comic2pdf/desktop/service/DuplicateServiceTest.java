@@ -1,6 +1,7 @@
-package com.comic2pdf.desktop.duplicates;
+package com.comic2pdf.desktop.service;
 
-import com.comic2pdf.desktop.DupRow;
+import com.comic2pdf.desktop.model.DupRow;
+import com.comic2pdf.desktop.model.DuplicateDecision;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,7 +29,6 @@ class DuplicateServiceTest {
     @Test
     @DisplayName("listDuplicates : parse un rapport JSON minimal -> 1 DupRow correct")
     void listDuplicates_parsesReportCorrectly(@TempDir Path dataDir) throws IOException {
-        // Préparer le rapport JSON minimal
         Path reportsDir = dataDir.resolve("reports").resolve("duplicates");
         Files.createDirectories(reportsDir);
 
@@ -66,14 +66,12 @@ class DuplicateServiceTest {
         Files.createDirectories(reportsDir);
         Files.writeString(reportsDir.resolve("bad.json"), "{ invalid json !!!}");
 
-        // Un rapport valide en parallèle
         Files.writeString(reportsDir.resolve("good__key.json"),
                 """
                 {"jobKey":"good__key","incoming":{"fileName":"f.cbz"},"existing":{"state":"DONE"}}
                 """);
 
         List<DupRow> rows = service.listDuplicates(dataDir);
-        // Le rapport corrompu est ignoré, le bon est lu
         assertEquals(1, rows.size());
         assertEquals("good__key", rows.get(0).getJobKey());
     }
@@ -81,7 +79,6 @@ class DuplicateServiceTest {
     @Test
     @DisplayName("listDuplicates : crée le dossier reports/duplicates s'il est absent")
     void listDuplicates_createsMissingDir(@TempDir Path dataDir) throws IOException {
-        // Ne pas créer le dossier à l'avance
         assertDoesNotThrow(() -> service.listDuplicates(dataDir));
         assertTrue(Files.exists(dataDir.resolve("reports").resolve("duplicates")));
     }
@@ -96,7 +93,8 @@ class DuplicateServiceTest {
         String jobKey = "deadbeef__cafe";
         Path result = service.writeDecision(dataDir, jobKey, DuplicateDecision.DISCARD);
 
-        Path expected = dataDir.resolve("hold").resolve("duplicates").resolve(jobKey).resolve("decision.json");
+        Path expected = dataDir.resolve("hold").resolve("duplicates")
+                .resolve(jobKey).resolve("decision.json");
         assertEquals(expected.toAbsolutePath(), result.toAbsolutePath());
         assertTrue(Files.exists(result), "decision.json doit exister");
     }
@@ -107,7 +105,8 @@ class DuplicateServiceTest {
         String jobKey = "test__discard";
         service.writeDecision(dataDir, jobKey, DuplicateDecision.DISCARD);
 
-        Path decisionPath = dataDir.resolve("hold").resolve("duplicates").resolve(jobKey).resolve("decision.json");
+        Path decisionPath = dataDir.resolve("hold").resolve("duplicates")
+                .resolve(jobKey).resolve("decision.json");
         String content = Files.readString(decisionPath);
         assertTrue(content.contains("DISCARD"), "L'action DISCARD doit être dans le JSON");
         assertFalse(content.contains("nonce"), "Pas de nonce pour DISCARD");
@@ -119,7 +118,8 @@ class DuplicateServiceTest {
         String jobKey = "test__force";
         service.writeDecision(dataDir, jobKey, DuplicateDecision.FORCE_REPROCESS);
 
-        Path decisionPath = dataDir.resolve("hold").resolve("duplicates").resolve(jobKey).resolve("decision.json");
+        Path decisionPath = dataDir.resolve("hold").resolve("duplicates")
+                .resolve(jobKey).resolve("decision.json");
         String content = Files.readString(decisionPath);
         assertTrue(content.contains("FORCE_REPROCESS"));
         assertTrue(content.contains("nonce"), "Un nonce doit être inclus pour FORCE_REPROCESS");
@@ -129,7 +129,6 @@ class DuplicateServiceTest {
     @DisplayName("writeDecision : crée les dossiers intermédiaires manquants")
     void writeDecision_createsMissingDirectories(@TempDir Path dataDir) throws IOException {
         String jobKey = "nouveau__job";
-        // hold/duplicates/<jobKey>/ n'existe pas encore
         Path holdDir = dataDir.resolve("hold").resolve("duplicates").resolve(jobKey);
         assertFalse(Files.exists(holdDir), "Le dossier ne doit pas encore exister");
 
@@ -143,7 +142,8 @@ class DuplicateServiceTest {
     @DisplayName("writeDecision USE_EXISTING_RESULT : pas de nonce")
     void writeDecision_useExisting_noNonce(@TempDir Path dataDir) throws IOException {
         service.writeDecision(dataDir, "jk__ue", DuplicateDecision.USE_EXISTING_RESULT);
-        Path p = dataDir.resolve("hold").resolve("duplicates").resolve("jk__ue").resolve("decision.json");
+        Path p = dataDir.resolve("hold").resolve("duplicates")
+                .resolve("jk__ue").resolve("decision.json");
         String content = Files.readString(p);
         assertTrue(content.contains("USE_EXISTING_RESULT"));
         assertFalse(content.contains("nonce"));

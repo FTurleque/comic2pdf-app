@@ -1,4 +1,4 @@
-package com.comic2pdf.desktop;
+package com.comic2pdf.desktop.model;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -22,7 +22,7 @@ public class JobRow {
      *
      * @param jobKey    Clé unique du job.
      * @param state     État global (DONE, ERROR, PREP_RUNNING, etc.).
-     * @param stage     Étape en cours dans in_flight (peut être vide).
+     * @param stage     Étape en cours (peut être vide).
      * @param attempt   Numéro de tentative courante.
      * @param updatedAt Horodatage ISO de dernière mise à jour.
      * @param inputName Nom du fichier d'entrée.

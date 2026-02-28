@@ -1,8 +1,9 @@
-package com.comic2pdf.desktop;
+package com.comic2pdf.desktop.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.comic2pdf.desktop.config.AppConfig;
+import com.comic2pdf.desktop.model.JobRow;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -17,7 +18,7 @@ import java.util.Optional;
  * Client HTTP vers l'API d'observabilité de l'orchestrateur.
  *
  * <p>Utilise {@code java.net.http.HttpClient} (Java 11+, stdlib — aucune dépendance Maven).</p>
- * <p>URL configurable : {@code ORCHESTRATOR_URL} (env) ou champ UI, défaut {@code http://localhost:8080}.</p>
+ * <p>URL configurable via {@code ORCHESTRATOR_URL} (env) ou constructeur explicite.</p>
  */
 public class OrchestratorClient {
 
@@ -34,9 +35,9 @@ public class OrchestratorClient {
      * ou en utilisant la valeur par défaut {@code http://localhost:8080}.
      */
     public OrchestratorClient() {
-        this(
-            Optional.ofNullable(System.getenv(ENV_URL)).filter(s -> !s.isBlank()).orElse(DEFAULT_URL)
-        );
+        this(Optional.ofNullable(System.getenv(ENV_URL))
+                .filter(s -> !s.isBlank())
+                .orElse(DEFAULT_URL));
     }
 
     /**
@@ -53,7 +54,7 @@ public class OrchestratorClient {
     }
 
     /**
-     * Modifie l'URL de base (permet le changement depuis l'UI sans recréer le client).
+     * Modifie l'URL de base (sans recréer le client).
      *
      * @param url Nouvelle URL de base.
      */
@@ -134,7 +135,7 @@ public class OrchestratorClient {
     }
 
     // -----------------------------------------------------------------------
-    // Helpers HTTP
+    // Helpers HTTP privés
     // -----------------------------------------------------------------------
 
     private String get(String path) throws Exception {

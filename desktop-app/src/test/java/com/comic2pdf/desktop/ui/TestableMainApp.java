@@ -1,9 +1,9 @@
 package com.comic2pdf.desktop.ui;
 
-import com.comic2pdf.desktop.OrchestratorClient;
+import com.comic2pdf.desktop.client.OrchestratorClient;
 import com.comic2pdf.desktop.config.AppConfig;
 import com.comic2pdf.desktop.config.ConfigService;
-import com.comic2pdf.desktop.duplicates.DuplicateService;
+import com.comic2pdf.desktop.service.DuplicateService;
 import com.comic2pdf.desktop.service.AppServices;
 import com.comic2pdf.desktop.ui.controller.MainController;
 import javafx.application.Application;

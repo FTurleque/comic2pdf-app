@@ -1,7 +1,7 @@
 package com.comic2pdf.desktop.ui.controller;
 
-import com.comic2pdf.desktop.DupRow;
-import com.comic2pdf.desktop.duplicates.DuplicateDecision;
+import com.comic2pdf.desktop.model.DupRow;
+import com.comic2pdf.desktop.model.DuplicateDecision;
 import com.comic2pdf.desktop.service.AppServices;
 import com.comic2pdf.desktop.util.FxUtils;
 import javafx.fxml.FXML;

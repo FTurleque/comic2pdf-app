@@ -1,8 +1,9 @@
-package com.comic2pdf.desktop.duplicates;
+package com.comic2pdf.desktop.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.comic2pdf.desktop.DupRow;
+import com.comic2pdf.desktop.model.DupRow;
+import com.comic2pdf.desktop.model.DuplicateDecision;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,19 +13,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Service pur de gestion des doublons côté desktop.
- * Encapsule la lecture des rapports JSON et l'écriture des décisions
- * sans dépendance directe à l'interface graphique (testable unitairement).
  *
  * <p>Responsabilités :</p>
  * <ul>
  *   <li>Lire {@code data/reports/duplicates/*.json} et les exposer en liste de {@link DupRow}.</li>
  *   <li>Écrire {@code data/hold/duplicates/<jobKey>/decision.json} avec l'action choisie.</li>
  * </ul>
+ * <p>Aucune dépendance à l'interface graphique — entièrement testable unitairement.</p>
  */
 public class DuplicateService {
 
@@ -39,7 +38,6 @@ public class DuplicateService {
 
     /**
      * Construit un {@code DuplicateService} avec un {@link ObjectMapper} fourni.
-     * Utile pour les tests.
      *
      * @param mapper ObjectMapper à utiliser.
      */
@@ -49,7 +47,6 @@ public class DuplicateService {
 
     /**
      * Liste tous les doublons en attente de décision.
-     * Lit les fichiers {@code *.json} présents dans {@code <dataDir>/reports/duplicates/}.
      *
      * @param dataDir Racine du répertoire {@code data/}.
      * @return Liste de {@link DupRow} (peut être vide, jamais null).
@@ -63,7 +60,7 @@ public class DuplicateService {
         try (Stream<Path> stream = Files.list(reports)) {
             List<Path> jsonFiles = stream
                     .filter(p -> p.toString().endsWith(".json"))
-                    .collect(Collectors.toList());
+                    .toList();
 
             for (Path p : jsonFiles) {
                 try {
@@ -84,7 +81,6 @@ public class DuplicateService {
 
     /**
      * Écrit le fichier {@code decision.json} pour un jobKey donné.
-     * Crée les dossiers intermédiaires si nécessaire.
      *
      * @param dataDir  Racine du répertoire {@code data/}.
      * @param jobKey   Clé du job doublon.
@@ -92,7 +88,8 @@ public class DuplicateService {
      * @return Chemin du fichier {@code decision.json} écrit.
      * @throws IOException En cas d'erreur d'écriture.
      */
-    public Path writeDecision(Path dataDir, String jobKey, DuplicateDecision decision) throws IOException {
+    public Path writeDecision(Path dataDir, String jobKey, DuplicateDecision decision)
+            throws IOException {
         Path decisionPath = dataDir
                 .resolve("hold")
                 .resolve("duplicates")

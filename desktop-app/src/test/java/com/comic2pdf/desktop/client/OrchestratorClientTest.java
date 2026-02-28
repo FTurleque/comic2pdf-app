@@ -1,5 +1,7 @@
-package com.comic2pdf.desktop;
+package com.comic2pdf.desktop.client;
 
+import com.comic2pdf.desktop.config.AppConfig;
+import com.comic2pdf.desktop.model.JobRow;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +30,6 @@ class OrchestratorClientTest {
     @Test
     @DisplayName("getJobs() retourne une liste vide si l'orchestrateur est inaccessible")
     void getJobs_retourneListeVide_siOrchInaccessible() {
-        // URL vers un port fermé — doit retourner une liste vide sans exception
         OrchestratorClient client = new OrchestratorClient("http://127.0.0.1:19999");
         var jobs = client.getJobs();
         assertNotNull(jobs);
@@ -56,7 +57,7 @@ class OrchestratorClientTest {
     @DisplayName("postConfig() retourne false si l'orchestrateur est inaccessible")
     void postConfig_retourneFalse_siOrchInaccessible() {
         OrchestratorClient client = new OrchestratorClient("http://127.0.0.1:19999");
-        var cfg = new com.comic2pdf.desktop.config.AppConfig();
+        var cfg = new AppConfig();
         boolean result = client.postConfig(cfg);
         assertFalse(result, "Doit retourner false si connexion impossible");
     }
