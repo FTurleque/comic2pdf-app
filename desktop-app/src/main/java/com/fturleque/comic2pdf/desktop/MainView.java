@@ -132,8 +132,9 @@ public class MainView extends BorderPane {
             }
         });
 
+        //noinspection unchecked // Safe: toutes les colonnes sont TableColumn<DupRow, String>
         dupTable.getColumns().addAll(colKey, colIncoming, colExisting, colAction);
-        dupTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        dupTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
 
         var container = new VBox(8, new Label("Doublons en attente (DUPLICATE_PENDING)"), dupTable);
         container.setPadding(new Insets(10, 5, 10, 5));

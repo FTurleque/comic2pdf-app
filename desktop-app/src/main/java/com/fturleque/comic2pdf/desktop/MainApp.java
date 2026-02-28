@@ -74,6 +74,7 @@ public class MainApp extends Application {
      *
      * @param args Arguments de la ligne de commande (ignorés).
      */
+    @SuppressWarnings("unused") // Point d'entrée standard JavaFX
     public static void main(String[] args) {
         launch(args);
     }

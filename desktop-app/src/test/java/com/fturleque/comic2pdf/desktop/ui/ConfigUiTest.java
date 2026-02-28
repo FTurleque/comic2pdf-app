@@ -8,7 +8,6 @@ import javafx.stage.Stage;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -50,12 +49,12 @@ class ConfigUiTest extends ApplicationTest {
         stubServer.start();
 
         int port = stubServer.getAddress().getPort();
-        TestableMainApp.orchestratorUrlOverride = Optional.of("http://localhost:" + port);
-        TestableMainApp.jobsAutoRefreshOverride = Optional.of(false);
+        TestableMainApp.orchestratorUrlOverride = "http://localhost:" + port;
+        TestableMainApp.jobsAutoRefreshOverride = false;
     }
 
     @Override
-    public void start(Stage stage) throws Exception {
+    public void start(Stage stage) {
         new TestableMainApp().start(stage);
     }
 
@@ -67,7 +66,7 @@ class ConfigUiTest extends ApplicationTest {
 
     @Test
     @DisplayName("Apply Config : le stub POST /config reçoit le JSON avec les clés attendues")
-    void applyConfigEnvoieJsonAuStub() throws Exception {
+    void applyConfigEnvoieJsonAuStub() {
         WaitForAsyncUtils.waitForFxEvents();
 
         // Naviguer vers l'onglet Configuration
@@ -81,7 +80,7 @@ class ConfigUiTest extends ApplicationTest {
         // Attendre que le stub ait reçu la requête POST (max 5s)
         long deadline = System.currentTimeMillis() + 5_000;
         while (capturedBody.get() == null && System.currentTimeMillis() < deadline) {
-            Thread.sleep(50);
+            WaitForAsyncUtils.sleep(50, java.util.concurrent.TimeUnit.MILLISECONDS);
         }
 
         String body = capturedBody.get();

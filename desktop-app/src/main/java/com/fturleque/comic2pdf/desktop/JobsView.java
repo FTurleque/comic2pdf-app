@@ -115,7 +115,7 @@ public class JobsView extends BorderPane {
         colUpdated.setPrefWidth(160);
 
         table.getColumns().addAll(colKey, colFile, colState, colStage, colAttempt, colUpdated);
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         table.setPlaceholder(new Label("Aucun job. Vérifier la connexion à l'orchestrateur."));
         table.setId("jobsTable");
 

@@ -26,11 +26,11 @@ class MainAppUiTest extends ApplicationTest {
 
     @BeforeAll
     static void setup() {
-        TestableMainApp.jobsAutoRefreshOverride = Optional.of(false);
+        TestableMainApp.jobsAutoRefreshOverride = false;
     }
 
     @Override
-    public void start(Stage stage) throws Exception {
+    public void start(Stage stage) {
         new TestableMainApp().start(stage);
     }
 
@@ -41,7 +41,7 @@ class MainAppUiTest extends ApplicationTest {
 
     @Test
     @DisplayName("Les 3 onglets Doublons / Jobs / Configuration sont présents et identifiables")
-    void troisOngletsPrésents() {
+    void troisOngletsPresents() {
         WaitForAsyncUtils.waitForFxEvents();
 
         TabPane tabs = lookup("#mainTabs").query();

@@ -9,7 +9,6 @@ import javafx.stage.Stage;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -48,12 +47,12 @@ class JobsUiTest extends ApplicationTest {
         stubServer.start();
 
         int port = stubServer.getAddress().getPort();
-        TestableMainApp.orchestratorUrlOverride = Optional.of("http://localhost:" + port);
-        TestableMainApp.jobsAutoRefreshOverride = Optional.of(false);
+        TestableMainApp.orchestratorUrlOverride = "http://localhost:" + port;
+        TestableMainApp.jobsAutoRefreshOverride = false;
     }
 
     @Override
-    public void start(Stage stage) throws Exception {
+    public void start(Stage stage) {
         new TestableMainApp().start(stage);
     }
 
@@ -65,7 +64,7 @@ class JobsUiTest extends ApplicationTest {
 
     @Test
     @DisplayName("Refresh manuel : table Jobs contient 1 ligne après réponse stub GET /jobs")
-    void forceRefreshAffiche1Job() throws Exception {
+    void forceRefreshAffiche1Job() {
         WaitForAsyncUtils.waitForFxEvents();
 
         // Naviguer vers l'onglet Jobs
@@ -80,8 +79,7 @@ class JobsUiTest extends ApplicationTest {
         TableView<?> table;
         do {
             WaitForAsyncUtils.waitForFxEvents();
-            Thread.sleep(100);
-            //noinspection unchecked
+            WaitForAsyncUtils.sleep(100, java.util.concurrent.TimeUnit.MILLISECONDS);
             table = lookup("#jobsTable").query();
         } while (table.getItems().isEmpty() && System.currentTimeMillis() < deadline);
 

@@ -14,13 +14,12 @@ import javafx.stage.Stage;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Optional;
 
 /**
  * Application JavaFX dédiée aux tests UI (TestFX).
  *
  * <p>TestFX instancie {@link Application} via reflection, sans possibilité de passer
- * des arguments au constructeur. L'injection se fait via des champs statiques {@link Optional} :</p>
+ * des arguments au constructeur. L'injection se fait via des champs statiques nullable :</p>
  * <ul>
  *   <li>{@link #dataDirOverride} : dossier data/ injecté (pour les tests doublons)</li>
  *   <li>{@link #orchestratorUrlOverride} : URL de l'orchestrateur (pour les stubs HTTP)</li>
@@ -30,58 +29,62 @@ import java.util.Optional;
  * <p>Pattern d'utilisation dans chaque test :</p>
  * <pre>{@code
  * @BeforeEach void setup() {
- *     TestableMainApp.orchestratorUrlOverride = Optional.of("http://localhost:" + stubPort);
- *     TestableMainApp.jobsAutoRefreshOverride = Optional.of(false);
+ *     TestableMainApp.orchestratorUrlOverride = "http://localhost:" + stubPort;
+ *     TestableMainApp.jobsAutoRefreshOverride = false;
  * }
  * @AfterEach void tearDown() { TestableMainApp.resetOverrides(); }
  * }</pre>
  *
- * <p>Fallback sur les valeurs par défaut si un {@link Optional} est vide — aucun NPE possible.</p>
+ * <p>Fallback sur les valeurs par défaut si un champ est null — aucun NPE possible.</p>
  */
 public class TestableMainApp extends Application {
 
-    /** Surcharge du dossier data/ (pour les tests de doublons). {@code Optional.empty()} = "../data". */
-    public static Optional<Path> dataDirOverride = Optional.empty();
+    /** Surcharge du dossier data/ (pour les tests de doublons). {@code null} = "../data". */
+    public static Path dataDirOverride = null;
 
-    /** Surcharge de l'URL orchestrateur (pour les stubs HTTP). {@code Optional.empty()} = "http://localhost:8080". */
-    public static Optional<String> orchestratorUrlOverride = Optional.empty();
+    /** Surcharge de l'URL orchestrateur (pour les stubs HTTP). {@code null} = <code>http://localhost:8080</code>. */
+    public static String orchestratorUrlOverride = null;
 
     /**
      * Surcharge du flag autoRefresh de JobsView.
-     * {@code Optional.of(false)} = pas de poll réseau (essentiel pour les tests).
-     * {@code Optional.empty()} = true (comportement production).
+     * {@code false} = pas de poll réseau (essentiel pour les tests).
+     * {@code null} = true (comportement production).
      */
-    public static Optional<Boolean> jobsAutoRefreshOverride = Optional.empty();
+    public static Boolean jobsAutoRefreshOverride = null;
 
     /** Référence à la JobsView créée — permet d'appeler {@code forceRefresh()} depuis les tests. */
     public static JobsView lastJobsView;
 
     /**
-     * Réinitialise tous les overrides à leur état par défaut ({@link Optional#empty()}).
+     * Réinitialise tous les overrides à leur état par défaut ({@code null}).
      * Doit être appelé dans {@code @AfterEach} de chaque test UI.
      */
     public static void resetOverrides() {
-        dataDirOverride = Optional.empty();
-        orchestratorUrlOverride = Optional.empty();
-        jobsAutoRefreshOverride = Optional.empty();
+        dataDirOverride = null;
+        orchestratorUrlOverride = null;
+        jobsAutoRefreshOverride = null;
         lastJobsView = null;
     }
 
     @Override
     public void start(Stage stage) {
         // Résolution de l'URL orchestrateur : override ou fallback
-        String url = orchestratorUrlOverride.orElse("http://localhost:8080");
+        String url = orchestratorUrlOverride != null
+                ? orchestratorUrlOverride
+                : "http://localhost:8080";
         OrchestratorClient client = new OrchestratorClient(url);
 
         // Résolution du dossier data/ : override (Path → String) ou fallback
-        String dataDir = dataDirOverride
-                .map(Path::toString)
-                .orElse(Paths.get("..", "data").normalize().toString());
+        String dataDir = dataDirOverride != null
+                ? dataDirOverride.toString()
+                : Paths.get("..", "data").normalize().toString();
         MainView mainView = new MainView(dataDir);
         TextField dataDirField = mainView.getDataDirField();
 
         // JobsView avec autoRefresh contrôlable (false en test pour éviter tout poll réseau)
-        boolean autoRefresh = jobsAutoRefreshOverride.orElse(true);
+        boolean autoRefresh = jobsAutoRefreshOverride != null
+                ? jobsAutoRefreshOverride
+                : true;
         JobsView jobsView = new JobsView(client, dataDirField, autoRefresh);
         lastJobsView = jobsView;
 

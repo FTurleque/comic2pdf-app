@@ -67,13 +67,15 @@ public class ConfigView extends VBox {
         grid.add(prepConcurrencySpinner, 1, row++);
 
         grid.add(new Label("OCR_CONCURRENCY :"), 0, row);
-        grid.add(ocrConcurrencySpinner, 1, row++);
+        grid.add(ocrConcurrencySpinner, 1, row);
 
+        row++;
         grid.add(new Label("Timeout job (s) :"), 0, row);
-        grid.add(timeoutSpinner, 1, row++);
+        grid.add(timeoutSpinner, 1, row);
 
+        row++;
         grid.add(new Label("Langue OCR :"), 0, row);
-        grid.add(ocrLangField, 1, row++);
+        grid.add(ocrLangField, 1, row);
 
         var applyBtn = new Button("Appliquer");
         applyBtn.setDefaultButton(true);
@@ -151,6 +153,7 @@ public class ConfigView extends VBox {
      *
      * @return {@link AppConfig} construite depuis l'UI.
      */
+    @SuppressWarnings("unused") // Utilisée dans les tests
     public AppConfig getCurrentConfigFromUi() {
         return buildConfigFromUi();
     }

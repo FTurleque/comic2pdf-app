@@ -43,12 +43,12 @@ class DuplicatesUiTest extends ApplicationTest {
                 """;
         Files.writeString(reportsDir.resolve("aabb1122__ccdd3344.json"), json);
 
-        TestableMainApp.dataDirOverride = Optional.of(dataDir);
-        TestableMainApp.jobsAutoRefreshOverride = Optional.of(false);
+        TestableMainApp.dataDirOverride = dataDir;
+        TestableMainApp.jobsAutoRefreshOverride = false;
     }
 
     @Override
-    public void start(Stage stage) throws Exception {
+    public void start(Stage stage) {
         new TestableMainApp().start(stage);
     }
 
@@ -64,7 +64,6 @@ class DuplicatesUiTest extends ApplicationTest {
 
         // Le constructeur MainView appelle refreshDuplicates() avec le dataDir injecté :
         // la table peut déjà être remplie. Si non, cliquer le bouton.
-        @SuppressWarnings("unchecked")
         TableView<?> tableAvant = lookup("#duplicatesTable").query();
         assertNotNull(tableAvant, "#duplicatesTable doit exister");
 
@@ -72,7 +71,6 @@ class DuplicatesUiTest extends ApplicationTest {
         clickOn("#duplicatesRefreshBtn");
         WaitForAsyncUtils.waitForFxEvents();
 
-        @SuppressWarnings("unchecked")
         TableView<?> table = lookup("#duplicatesTable").query();
         assertEquals(1, table.getItems().size(),
                 "1 doublon attendu dans la table après refresh");
