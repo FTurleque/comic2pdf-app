@@ -3,11 +3,10 @@
     <envs>
       <env name="ORCHESTRATOR_URL" value="http://localhost:18083" />
     </envs>
-    <option name="MAIN_CLASS_NAME" value="com.fturleque.comic2pdf.desktop.MainApp" />
+    <option name="MAIN_CLASS_NAME" value="com.comic2pdf.desktop.MainApp" />
     <module name="desktop-app" />
     <method v="2">
       <option name="Make" enabled="true" />
     </method>
   </configuration>
 </component>
-
