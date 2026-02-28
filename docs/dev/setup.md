@@ -150,7 +150,91 @@ docker compose logs --follow
 
 ---
 
-## Tableau complet des variables d'environnement
+## Lancer l'application desktop JavaFX
+
+### Prérequis
+
+1. Stack Docker démarrée : `docker compose up -d --build` (orchestrateur sur **port 18083** côté hôte)
+2. Java 21+, Maven 3.9+
+
+---
+
+### Lancement via IntelliJ (Run/Debug)
+
+#### 1. Import Maven
+
+1. Ouvrir le dossier racine `comic2pdf-app/` dans IntelliJ IDEA
+2. IntelliJ détecte automatiquement `desktop-app/pom.xml`
+3. Attendre la résolution des dépendances Maven
+
+#### 2. Configuration du JDK
+
+- **File → Project Structure → Project**
+  - SDK : Java 21
+  - Language level : 21
+
+#### 3. Configurations Run/Debug disponibles
+
+Le dépôt inclut 3 configurations prêtes à l'emploi (dossier `.run/` à la racine) :
+
+| Configuration | Type | Description |
+|---|---|---|
+| **Comic2PDF - Desktop Debug** | Application | Lancement direct via `MainApp` (support debug complet) |
+| **Comic2PDF - Desktop Run (Maven)** | Maven | Lancement via `mvn javafx:run` |
+| **Comic2PDF - Desktop UI Tests** | Maven | Exécution des tests UI (`mvn -Pui-tests test`) |
+
+**Variable d'environnement obligatoire** : `ORCHESTRATOR_URL=http://localhost:18083`
+
+> **Important** : `ORCHESTRATOR_URL` est une **variable d'environnement**, pas une propriété système `-D`.
+> Les configurations `.run/*.xml` la définissent automatiquement.
+
+#### 4. Lancer l'application
+
+1. Sélectionner `Comic2PDF - Desktop Debug` ou `Comic2PDF - Desktop Run (Maven)` dans le menu déroulant
+2. Cliquer sur **Run** (▶) ou **Debug** (🐛)
+
+---
+
+### Lancement via scripts (CLI)
+
+#### Windows PowerShell
+
+```powershell
+.\scripts\run_desktop.ps1
+```
+
+Le script exporte automatiquement `ORCHESTRATOR_URL=http://localhost:18083` puis lance `mvn javafx:run`.
+
+#### Linux / macOS
+
+```bash
+./scripts/run_desktop.sh
+```
+
+#### Méthode manuelle (développement)
+
+**Windows PowerShell** :
+```powershell
+# ORCHESTRATOR_URL doit être une variable d'environnement (pas -D)
+$env:ORCHESTRATOR_URL = "http://localhost:18083"
+cd desktop-app
+mvn -q javafx:run
+```
+
+**Linux / macOS** :
+```bash
+# ORCHESTRATOR_URL doit être une variable d'environnement (pas -D)
+export ORCHESTRATOR_URL="http://localhost:18083"
+cd desktop-app
+mvn -q javafx:run
+```
+
+> **Rappel** : `ORCHESTRATOR_URL` est lu via `System.getenv()` dans [OrchestratorClient.java](../desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/OrchestratorClient.java).
+> Utiliser une variable d'environnement, **jamais** une propriété `-D`.
+
+---
+
+
 
 ### Variables communes (tous les services)
 

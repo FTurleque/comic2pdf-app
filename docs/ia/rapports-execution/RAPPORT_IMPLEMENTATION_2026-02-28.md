@@ -152,6 +152,7 @@ cd ..
 - Instructions desktop : `.github/instructions/desktop-app.instructions.md`
 - Politique rapports IA : `.github/instructions/reports-docs.instructions.md`
 - Template rapport : `docs/ia/templates/rapport_template.md`
+- **Rapport complémentaire UI/scripts** : [`RAPPORT_IMPLEMENTATION_UI-TESTS-LANCEMENT_2026-02-28.md`](RAPPORT_IMPLEMENTATION_UI-TESTS-LANCEMENT_2026-02-28.md)
 
 ---
 

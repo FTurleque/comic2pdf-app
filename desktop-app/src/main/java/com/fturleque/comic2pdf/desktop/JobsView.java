@@ -41,17 +41,32 @@ public class JobsView extends BorderPane {
     private ScheduledService<List<JobRow>> refreshService;
 
     /**
-     * Construit la vue Jobs.
+     * Constructeur normal (production) — active le refresh automatique toutes les 3 secondes.
      *
      * @param client       Client HTTP vers l'orchestrateur.
-     * @param dataDirField Champ partagé contenant le chemin du dossier data/ (depuis la vue principale).
+     * @param dataDirField Champ partagé chemin data/.
      */
     public JobsView(OrchestratorClient client, TextField dataDirField) {
+        this(client, dataDirField, true);
+    }
+
+    /**
+     * Constructeur avec contrôle du refresh automatique.
+     * Si {@code autoRefresh=false}, le {@link ScheduledService} n'est pas démarré.
+     * Utile en tests pour éviter tout poll réseau réel.
+     *
+     * @param client       Client HTTP vers l'orchestrateur.
+     * @param dataDirField Champ partagé chemin data/.
+     * @param autoRefresh  {@code true} pour démarrer le refresh périodique.
+     */
+    public JobsView(OrchestratorClient client, TextField dataDirField, boolean autoRefresh) {
         this.client = client;
         this.dataDirField = dataDirField;
         setPadding(new Insets(10));
         buildUi();
-        startRefreshService();
+        if (autoRefresh) {
+            startRefreshService();
+        }
     }
 
     private void buildUi() {
@@ -62,6 +77,7 @@ public class JobsView extends BorderPane {
 
     private HBox buildToolbar() {
         var refreshBtn = new Button("Rafraîchir maintenant");
+        refreshBtn.setId("jobsRefreshBtn");
         refreshBtn.setOnAction(e -> forceRefresh());
 
         var openOutBtn = new Button("Ouvrir dossier out/");
@@ -101,6 +117,7 @@ public class JobsView extends BorderPane {
         table.getColumns().addAll(colKey, colFile, colState, colStage, colAttempt, colUpdated);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.setPlaceholder(new Label("Aucun job. Vérifier la connexion à l'orchestrateur."));
+        table.setId("jobsTable");
 
         var container = new VBox(8, new Label("Jobs de l'orchestrateur"), table);
         container.setPadding(new Insets(5));
@@ -108,6 +125,7 @@ public class JobsView extends BorderPane {
     }
 
     private HBox buildStatus() {
+        statusLabel.setId("jobsStatusLabel");
         var row = new HBox(statusLabel);
         row.setPadding(new Insets(8));
         return row;
@@ -203,4 +221,3 @@ public class JobsView extends BorderPane {
         }
     }
 }
-

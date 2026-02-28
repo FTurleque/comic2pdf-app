@@ -23,7 +23,21 @@ public class MainView extends BorderPane {
     private final TableView<DupRow> dupTable = new TableView<>();
     private final Label statusLabel = new Label("Ready.");
 
+    /**
+     * Constructeur par défaut : utilise {@code ../data} relatif au répertoire de lancement.
+     * Délègue au constructeur {@link #MainView(String)}.
+     */
     public MainView() {
+        this(Paths.get("..", "data").normalize().toString());
+    }
+
+    /**
+     * Constructeur avec chemin data/ initial explicite.
+     * Utilisé par les tests (injection via {@code TestableMainApp}).
+     *
+     * @param initialDataDir Chemin initial du dossier data/.
+     */
+    public MainView(String initialDataDir) {
         setPadding(new Insets(10));
 
         var top = new VBox(8);
@@ -34,8 +48,12 @@ public class MainView extends BorderPane {
         setCenter(buildTable());
         setBottom(buildBottom());
 
-        // default: ./data relative to desktop-app run dir
-        dataDirField.setText(Paths.get("..", "data").normalize().toString());
+        // IDs stables pour lookup TestFX
+        dataDirField.setId("dataDirField");
+        dupTable.setId("duplicatesTable");
+        statusLabel.setId("mainStatusLabel");
+
+        dataDirField.setText(initialDataDir);
         refreshDuplicates();
     }
 
@@ -55,6 +73,7 @@ public class MainView extends BorderPane {
         dataDirField.setPrefColumnCount(60);
 
         var refreshBtn = new Button("Rafraîchir doublons");
+        refreshBtn.setId("duplicatesRefreshBtn");
         refreshBtn.setOnAction(e -> refreshDuplicates());
 
         var openOutBtn = new Button("Ouvrir out/");

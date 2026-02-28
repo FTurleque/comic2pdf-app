@@ -54,6 +54,12 @@ public class MainApp extends Application {
 
         var tabPane = new TabPane(tabDuplicates, tabJobs, tabConfig);
 
+        // IDs stables pour lookup TestFX : lookup("#mainTabs"), lookup("#tabDuplicates"), etc.
+        tabPane.setId("mainTabs");
+        tabDuplicates.setId("tabDuplicates");
+        tabJobs.setId("tabJobs");
+        tabConfig.setId("tabConfig");
+
         var scene = new Scene(tabPane, 1100, 700);
         stage.setTitle("Comic2PDF - Desktop");
         stage.setScene(scene);

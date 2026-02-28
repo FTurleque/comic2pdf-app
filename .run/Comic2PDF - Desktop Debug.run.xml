@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Comic2PDF - Desktop Debug" type="Application" factoryName="Application">
+    <envs>
+      <env name="ORCHESTRATOR_URL" value="http://localhost:18083" />
+    </envs>
+    <option name="MAIN_CLASS_NAME" value="com.fturleque.comic2pdf.desktop.MainApp" />
+    <module name="desktop-app" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
+

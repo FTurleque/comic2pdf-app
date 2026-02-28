@@ -51,6 +51,10 @@ public class ConfigView extends VBox {
         ocrConcurrencySpinner.setEditable(true);
         timeoutSpinner.setEditable(true);
 
+        // IDs stables pour lookup TestFX
+        urlField.setId("orchestratorUrlField");
+        statusLabel.setId("configStatusLabel");
+
         var grid = new GridPane();
         grid.setHgap(12);
         grid.setVgap(8);
@@ -73,6 +77,7 @@ public class ConfigView extends VBox {
 
         var applyBtn = new Button("Appliquer");
         applyBtn.setDefaultButton(true);
+        applyBtn.setId("applyConfigBtn");
         applyBtn.setOnAction(e -> applyConfig());
 
         var resetBtn = new Button("Recharger");

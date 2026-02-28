@@ -89,7 +89,76 @@ mvn test
 
 **Résultat attendu** : `BUILD SUCCESS` — `Tests run: 21, Failures: 0, Errors: 0`
 
-> Aucune instance JavaFX n'est démarrée pendant les tests. Les tests portent uniquement sur la logique de service (filesystem, HTTP parsing).
+> Aucune instance JavaFX n'est démarrée pendant ces tests. Ils portent uniquement sur la logique de service (filesystem, HTTP parsing).
+
+---
+
+## Tests UI JavaFX (TestFX — profil `ui-tests`)
+
+Les tests UI sont tagués `@Tag("ui")` et **exclus de `mvn test`** par défaut.
+Pour les exécuter, utiliser le profil Maven `ui-tests`.
+
+### Mode visuel par défaut (requiert un écran)
+
+```powershell
+# Windows PowerShell
+cd desktop-app
+mvn -Pui-tests test
+
+# ou via le script
+.\scripts\run_ui_tests.ps1
+```
+
+```bash
+# Linux / macOS
+cd desktop-app
+mvn -Pui-tests test
+
+# ou via le script
+./scripts/run_ui_tests.sh
+```
+
+**Résultat attendu** : `BUILD SUCCESS` — `Tests run: 4, Failures: 0, Errors: 0`
+
+### Mode headless Monocle (opt-in, sans écran)
+
+```powershell
+# Windows PowerShell
+cd desktop-app
+mvn -Pui-tests test -Dtestfx.headless=true -Dprism.order=sw -Dprism.verbose=true
+
+# ou via le script
+.\scripts\run_ui_tests_headless.ps1
+```
+
+```bash
+# Linux / macOS
+./scripts/run_ui_tests_headless.sh
+```
+
+> Si aucune fenêtre ne s'affiche (serveur sans GPU), ajouter :
+> `-Dglass.platform=Monocle -Dmonocle.platform=Headless`
+
+> **Note `InaccessibleObjectException`** (rare sur Java 21+) : si Surefire lève une erreur
+> sur `com.sun.net.httpserver`, ajouter dans `argLine` du profil `ui-tests` dans `pom.xml` :
+> `--add-exports jdk.httpserver/com.sun.net.httpserver=ALL-UNNAMED`
+
+### Séquentialité des tests UI
+
+Les tests UI utilisent `TestableMainApp` avec des champs statiques (`Optional`).
+Les tests s'exécutent **séquentiellement** (comportement par défaut Surefire).
+Ne pas ajouter `@Execution(CONCURRENT)` sur les classes de tests UI.
+
+### Tests UI disponibles
+
+| Classe | Ce qu'elle couvre |
+|---|---|
+| `MainAppUiTest` | Les 3 onglets (Doublons, Jobs, Configuration) sont présents |
+| `DuplicatesUiTest` | Refresh doublons → table remplie depuis un JSON de rapport |
+| `ConfigUiTest` | Apply config → stub HTTP local reçoit le JSON attendu |
+| `JobsUiTest` | Refresh manuel jobs → table remplie depuis stub `GET /jobs` |
+
+> Aucun test UI ne se connecte au backend réel. Tous utilisent des stubs `com.sun.net.httpserver.HttpServer`.
 
 ---
 

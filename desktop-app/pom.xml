@@ -11,6 +11,9 @@
     <maven.compiler.release>21</maven.compiler.release>
     <javafx.version>21.0.4</javafx.version>
     <junit.version>5.10.3</junit.version>
+    <!-- TestFX + Monocle headless (opt-in via -Dtestfx.headless=true) -->
+    <testfx.version>4.0.18</testfx.version>
+    <monocle.version>21.0.2</monocle.version>
   </properties>
 
   <dependencies>
@@ -31,11 +34,25 @@
       <version>2.17.2</version>
     </dependency>
 
-    <!-- Test -->
+    <!-- Test unitaires -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Test UI : TestFX + Monocle headless opt-in -->
+    <dependency>
+      <groupId>org.testfx</groupId>
+      <artifactId>testfx-junit5</artifactId>
+      <version>${testfx.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testfx</groupId>
+      <artifactId>openjfx-monocle</artifactId>
+      <version>${monocle.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -50,12 +67,66 @@
           <mainClass>com.fturleque.comic2pdf.desktop.MainApp</mainClass>
         </configuration>
       </plugin>
-      <!-- Surefire 3.x pour la découverte JUnit 5 -->
+      <!--
+        Surefire 3.x — JUnit 5.
+        Par défaut : exclut le tag "ui" uniquement.
+        mvn test => ConfigServiceTest, DuplicateServiceTest, OrchestratorClientTest s'exécutent normalement.
+        mvn test => les tests @Tag("ui") sont EXCLUS.
+      -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.3.1</version>
+        <configuration>
+          <!--
+            Exclut UNIQUEMENT le tag JUnit 5 "ui".
+            excludedGroups = alias JUnit Platform pour @Tag (Surefire 3.x).
+            mvn test => ConfigServiceTest, DuplicateServiceTest, OrchestratorClientTest passent.
+            mvn test => tests @Tag("ui") sont EXCLUS.
+          -->
+          <excludedGroups>ui</excludedGroups>
+        </configuration>
       </plugin>
     </plugins>
   </build>
+
+  <!--
+    Profil ui-tests : lance UNIQUEMENT les tests @Tag("ui").
+    Mode visuel (défaut) : mvn -Pui-tests test
+    Mode headless Monocle :
+      mvn -Pui-tests test -Dtestfx.headless=true -Dprism.order=sw -Dprism.verbose=true
+    Si toujours pas d'affichage :
+      ajouter -Dglass.platform=Monocle -Dmonocle.platform=Headless
+    Si InaccessibleObjectException sur com.sun.net.httpserver (rare sur Java 21) :
+      ajouter dans argLine : ~~add-exports jdk.httpserver/com.sun.net.httpserver=ALL-UNNAMED~~
+  -->
+  <profiles>
+    <profile>
+      <id>ui-tests</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>3.3.1</version>
+            <configuration combine.self="override">
+              <!-- Annule l'exclusion "ui" du profil par défaut -->
+              <excludedGroups/>
+              <!-- Inclut UNIQUEMENT les tests @Tag("ui") -->
+              <groups>ui</groups>
+              <!--
+                add-opens requis par TestFX pour accéder aux internals JavaFX via reflection.
+                NE PAS mettre dans la config Surefire par défaut.
+              -->
+              <argLine>
+                --add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
+                --add-opens javafx.controls/com.sun.javafx.scene.control=ALL-UNNAMED
+              </argLine>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
 </project>
