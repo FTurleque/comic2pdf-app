@@ -24,10 +24,10 @@ DuplicateService (service pur)
 ```
 
 Fichiers concernés :
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/MainView.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateService.java`
-- `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/DupRow.java`
-- `desktop-app/src/test/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateServiceTest.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/MainView.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/duplicates/DuplicateService.java`
+- `desktop-app/src/main/java/com/comic2pdf/desktop/DupRow.java`
+- `desktop-app/src/test/java/com/comic2pdf/desktop/duplicates/DuplicateServiceTest.java`
 
 ## Task
 `<Description précise de ce qui doit être ajouté ou modifié.>`
@@ -68,7 +68,7 @@ public <ReturnType> <nomMethode>(Path dataDir, ...) throws IOException {
 
 **Cas B : nouveau service pur (scope différent)**
 ```java
-package com.fturleque.comic2pdf.desktop.<package>;
+package com.comic2pdf.desktop.<package>;
 
 public class <NomService> {
     private final ObjectMapper mapper;

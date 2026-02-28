@@ -15,14 +15,14 @@ Interface JavaFX permettant :
 ```
 desktop-app/
 ├── src/
-│   ├── main/java/com/fturleque/comic2pdf/desktop/
+│   ├── main/java/com/comic2pdf/desktop/
 │   │   ├── MainApp.java                       # Entrée JavaFX (extends Application)
 │   │   ├── MainView.java                      # Vue principale (BorderPane) — UI uniquement
 │   │   ├── DupRow.java                        # Modèle tableau (StringProperty JavaFX)
 │   │   └── duplicates/
 │   │       ├── DuplicateDecision.java         # Enum : USE_EXISTING_RESULT, DISCARD, FORCE_REPROCESS
 │   │       └── DuplicateService.java          # Service pur : listDuplicates, writeDecision
-│   └── test/java/com/fturleque/comic2pdf/desktop/
+│   └── test/java/com/comic2pdf/desktop/
 │       └── duplicates/
 │           └── DuplicateServiceTest.java      # Tests JUnit 5 uniquement
 └── pom.xml

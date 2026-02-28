@@ -6,7 +6,7 @@ Ce dossier contient les configurations de lancement IntelliJ IDEA pour le projet
 
 ### 1. Comic2PDF - Desktop Debug
 - **Type** : Application Java
-- **Classe principale** : `com.fturleque.comic2pdf.desktop.MainApp`
+- **Classe principale** : `com.comic2pdf.desktop.MainApp`
 - **Module** : `desktop-app`
 - **Variables d'environnement** : `ORCHESTRATOR_URL=http://localhost:18083`
 - **Usage** : Lancement direct de l'application JavaFX avec support complet du debugger IntelliJ

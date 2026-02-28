@@ -29,7 +29,7 @@ comic2pdf-app/
 │       ├── requirements.txt
 │       └── requirements-dev.txt
 ├── desktop-app/               # Interface JavaFX : dépôt fichiers + gestion doublons
-│   └── src/main/java/com/fturleque/comic2pdf/desktop/
+│   └── src/main/java/com/comic2pdf/desktop/
 │       ├── MainApp.java
 │       ├── MainView.java
 │       ├── DupRow.java
@@ -176,11 +176,11 @@ Zéro appel Internet. Zéro dépendance cloud.
 | `services/orchestrator/app/utils.py` | `ensure_dir`, `atomic_write_json`, `read_json`, `sha256_file`, `natural_key`, `now_iso` |
 | `services/orchestrator/tests/test_core.py` | `canonical_profile`, `make_job_key`, `is_heartbeat_stale`, métriques |
 | `services/orchestrator/tests/test_orchestrator.py` | doublons, `check_stale_jobs` (HTTP mocké) |
-| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/DupRow.java` | Modèle JavaFX : `jobKey`, `incomingFile`, `existingState` (StringProperty) |
-| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateDecision.java` | Enum : `USE_EXISTING_RESULT`, `DISCARD`, `FORCE_REPROCESS` |
-| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateService.java` | `listDuplicates(dataDir)`, `writeDecision(dataDir, jobKey, decision)` |
-| `desktop-app/src/main/java/com/fturleque/comic2pdf/desktop/MainView.java` | Vue JavaFX : délègue à `DuplicateService`, dépôt `.part` → rename atomique |
-| `desktop-app/src/test/java/com/fturleque/comic2pdf/desktop/duplicates/DuplicateServiceTest.java` | JUnit 5 : `listDuplicates`, `writeDecision` (filesystem via `@TempDir`) |
+| `desktop-app/src/main/java/com/comic2pdf/desktop/DupRow.java` | Modèle JavaFX : `jobKey`, `incomingFile`, `existingState` (StringProperty) |
+| `desktop-app/src/main/java/com/comic2pdf/desktop/duplicates/DuplicateDecision.java` | Enum : `USE_EXISTING_RESULT`, `DISCARD`, `FORCE_REPROCESS` |
+| `desktop-app/src/main/java/com/comic2pdf/desktop/duplicates/DuplicateService.java` | `listDuplicates(dataDir)`, `writeDecision(dataDir, jobKey, decision)` |
+| `desktop-app/src/main/java/com/comic2pdf/desktop/MainView.java` | Vue JavaFX : délègue à `DuplicateService`, dépôt `.part` → rename atomique |
+| `desktop-app/src/test/java/com/comic2pdf/desktop/duplicates/DuplicateServiceTest.java` | JUnit 5 : `listDuplicates`, `writeDecision` (filesystem via `@TempDir`) |
 
 ---
 

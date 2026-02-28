@@ -9,7 +9,7 @@
 
 | Champ | Valeur |
 |---|---|
-| **Titre** | Refactoring de package : `com.fturleque.comic2pdf` → `com.comic2pdf` |
+| **Titre** | Refactoring de package : `com.comic2pdf` → `com.comic2pdf` |
 | **Type** | `IMPLEMENTATION` |
 | **Date** | `2026-02-28` |
 | **Auteur(s)** | `Équipe comic2pdf-app` |
