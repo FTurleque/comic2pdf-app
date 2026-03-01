@@ -44,7 +44,8 @@ comic2pdf-app/
 │   ├── error/                 # Fichiers en erreur (MAX_ATTEMPTS dépassé)
 │   ├── hold/duplicates/       # Doublons en attente de décision
 │   ├── reports/duplicates/    # Rapports JSON des doublons
-│   └── index/                 # jobs.json + metrics.json
+│   ├── index/                 # jobs.json + metrics.json
+│   └── logs/                  # Logs rotatifs : orchestrator.log, prep-service.log, ocr-service.log
 ├── docker-compose.yml
 ├── run_tests.ps1              # Script PowerShell : tous les tests Python + Java
 └── README.md
@@ -89,6 +90,12 @@ Zéro appel Internet. Zéro dépendance cloud.
 | `JOB_TIMEOUT_SECONDS` | orchestrator | `600` |
 | `OCR_LANG` | orchestrator | `fra+eng` |
 | `SERVICE_CONCURRENCY` | prep, ocr | `1` |
+| `LOG_DIR` | tous | `/data/logs` |
+| `LOG_FILE` | tous | `<service>.log` |
+| `LOG_JSON` | tous | `false` |
+| `LOG_LEVEL` | tous | `INFO` |
+| `LOG_ROTATE_MAX_BYTES` | tous | `10000000` |
+| `LOG_ROTATE_BACKUPS` | tous | `5` |
 
 ### 3. Trois tentatives par étape — recalcul complet
 - Sur retry : **supprimer les artefacts** de l'étape précédente avant de recommencer.
@@ -165,17 +172,23 @@ Zéro appel Internet. Zéro dépendance cloud.
 | `services/prep-service/app/core.py` | `filter_images`, `sort_images`, `list_and_sort_images`, `images_to_pdf`, `get_tool_versions` |
 | `services/prep-service/app/main.py` | FastAPI : `/info`, `/jobs/prep`, `/jobs/{id}` — `run_job`, `requeue_running_on_startup` |
 | `services/prep-service/app/utils.py` | `ensure_dir`, `atomic_write_json`, `read_json`, `natural_key`, `now_iso` |
+| `services/prep-service/app/logger.py` | `get_logger`, `reset_logger_for_tests` — stdout + RotatingFileHandler, LOG_JSON/LOG_DIR/LOG_LEVEL |
 | `services/prep-service/tests/test_core.py` | tri naturel, filtrage images, smoke test `images_to_pdf` |
+| `services/prep-service/tests/test_logger_persistence.py` | création fichier, rotation, JSON valide, reset (6 tests) |
 | `services/ocr-service/app/core.py` | `get_tool_versions`, `build_ocrmypdf_cmd`, `requeue_running` |
 | `services/ocr-service/app/main.py` | FastAPI : `/info`, `/jobs/ocr`, `/jobs/{id}` — `run_job`, startup `requeue_running` |
 | `services/ocr-service/app/utils.py` | `ensure_dir`, `atomic_write_json`, `read_json`, `natural_key`, `now_iso` |
+| `services/ocr-service/app/logger.py` | `get_logger`, `reset_logger_for_tests` — stdout + RotatingFileHandler, LOG_JSON/LOG_DIR/LOG_LEVEL |
 | `services/ocr-service/tests/test_core.py` | `get_tool_versions`, `build_ocrmypdf_cmd`, `requeue_running` (subprocess mocké) |
 | `services/ocr-service/tests/test_jobs.py` | `run_job` OK/ERROR (subprocess mocké) |
+| `services/ocr-service/tests/test_logger_persistence.py` | création fichier, rotation, JSON valide, reset (6 tests) |
 | `services/orchestrator/app/core.py` | `canonical_profile`, `make_job_key`, `is_heartbeat_stale`, `make_empty_metrics`, `update_metrics`, `write_metrics` |
 | `services/orchestrator/app/main.py` | `process_tick`, `process_loop`, `check_stale_jobs`, `write_duplicate_report`, `check_duplicate_decisions` |
 | `services/orchestrator/app/utils.py` | `ensure_dir`, `atomic_write_json`, `read_json`, `sha256_file`, `natural_key`, `now_iso` |
+| `services/orchestrator/app/logger.py` | `get_logger`, `reset_logger_for_tests` — stdout + RotatingFileHandler, LOG_JSON/LOG_DIR/LOG_LEVEL |
 | `services/orchestrator/tests/test_core.py` | `canonical_profile`, `make_job_key`, `is_heartbeat_stale`, métriques |
 | `services/orchestrator/tests/test_orchestrator.py` | doublons, `check_stale_jobs` (HTTP mocké) |
+| `services/orchestrator/tests/test_logger_persistence.py` | création fichier, rotation (.1/.2), JSON valide, idempotence, reset (12 tests) |
 | `desktop-app/src/main/java/com/comic2pdf/desktop/DupRow.java` | Modèle JavaFX : `jobKey`, `incomingFile`, `existingState` (StringProperty) |
 | `desktop-app/src/main/java/com/comic2pdf/desktop/duplicates/DuplicateDecision.java` | Enum : `USE_EXISTING_RESULT`, `DISCARD`, `FORCE_REPROCESS` |
 | `desktop-app/src/main/java/com/comic2pdf/desktop/duplicates/DuplicateService.java` | `listDuplicates(dataDir)`, `writeDecision(dataDir, jobKey, decision)` |
@@ -193,6 +206,7 @@ Zéro appel Internet. Zéro dépendance cloud.
 - **Requeue au boot** : `prep-service` → `requeue_running_on_startup()` dans `main.py` ; `ocr-service` → `requeue_running(RUNNING_DIR, QUEUE_DIR)` depuis `core.py`. Politique recalcul complet (aucun artefact réutilisé).
 - **Desktop** : `MainView` délègue à `DuplicateService`. Toute logique filesystem reste dans le service pur.
 - **Dépôt desktop** : `MainView.depositFile()` copie en `.part` puis renomme atomiquement (`Files.move` avec `ATOMIC_MOVE`) — ne jamais lire un `.part`.
+- **Logs persistants** : chaque service logue vers stdout **ET** un fichier rotatif dans `LOG_DIR` (défaut `/data/logs`) via `RotatingFileHandler` (stdlib). Toujours utiliser `get_logger(name)` depuis `app/logger.py`. Dans les tests, recharger le module avec `importlib.reload(mod)` et appeler `mod.reset_logger_for_tests(logger)` en teardown pour éviter les fuites de handlers. `LOG_JSON=true` active le format JSON lines sur les deux handlers simultanément.
 
 ---
 

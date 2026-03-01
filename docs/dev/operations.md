@@ -310,6 +310,73 @@ docker compose logs orchestrator 2>&1 | grep '^{' | \
 
 ---
 
+## Logs persistants
+
+Chaque service (orchestrateur, prep-service, ocr-service) écrit ses logs vers **stdout** ET vers un **fichier rotatif** (`RotatingFileHandler` de la stdlib Python).
+
+### Variables d'environnement
+
+| Variable | Défaut | Description |
+|---|---|---|
+| `LOG_DIR` | `/data/logs` | Répertoire de stockage des fichiers de log |
+| `LOG_FILE` | `<service>.log` | Nom du fichier (ex : `orchestrator.log`) |
+| `LOG_JSON` | `false` | `true` → format JSON lines ; `false` → texte lisible |
+| `LOG_LEVEL` | `INFO` | Niveau de log : `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `LOG_ROTATE_MAX_BYTES` | `10000000` (10 Mo) | Taille max du fichier avant rotation |
+| `LOG_ROTATE_BACKUPS` | `5` | Nombre de fichiers de sauvegarde conservés |
+
+### Emplacement des fichiers
+
+```
+data/logs/
+├── orchestrator.log       # log courant
+├── orchestrator.log.1     # backup 1 (le plus récent)
+├── orchestrator.log.2     # backup 2
+├── prep-service.log
+├── prep-service.log.1
+├── ocr-service.log
+└── ocr-service.log.1
+```
+
+> ⚠️ Le dossier `data/` est dans `.gitignore` — les fichiers de log ne sont jamais commités.
+
+### Activer le format JSON
+
+```yaml
+# docker-compose.yml
+environment:
+  - LOG_JSON=true
+  - LOG_DIR=/data/logs
+```
+
+### Rotation personnalisée
+
+```yaml
+# Rotation toutes les 5 Mo, 3 backups
+environment:
+  - LOG_ROTATE_MAX_BYTES=5000000
+  - LOG_ROTATE_BACKUPS=3
+```
+
+### Analyser les logs fichier
+
+```powershell
+# Windows PowerShell — filtrer les erreurs dans le fichier log JSON
+Get-Content .\data\logs\orchestrator.log | ForEach-Object {
+    try {
+        $j = $_ | ConvertFrom-Json
+        if ($j.level -eq "ERROR") { $j | Format-Table }
+    } catch {}
+}
+```
+
+```bash
+# Linux / macOS — filtrer par jobKey
+grep '"level":"ERROR"' ./data/logs/orchestrator.log | jq 'select(.jobKey != null)'
+```
+
+---
+
 ## Janitor workdir
 
 L'orchestrateur exécute un nettoyage périodique des workdirs toutes les **600 secondes**.

@@ -19,6 +19,7 @@ from app.core import (
     make_empty_metrics,
     update_metrics,
     write_metrics,
+    safe_load_json,
 )
 from app.utils import (
     ensure_dir,
@@ -128,12 +129,15 @@ def job_state_path(job_key: str) -> str:
 def update_state(job_key: str, patch: dict):
     """
     Met à jour le fichier state.json d'un job.
+    Utilise safe_load_json pour résister aux fichiers corrompus ou absents.
 
     :param job_key: Identifiant du job.
     :param patch: Champs à fusionner.
     """
     p = job_state_path(job_key)
-    data = read_json(p) or {"jobKey": job_key}
+    ok, data = safe_load_json(p)
+    if not ok:
+        data = {"jobKey": job_key}
     data.update(patch)
     data["updatedAt"] = now_iso()
     atomic_write_json(p, data)
@@ -178,6 +182,115 @@ def discover_inputs():
         if not (lfn.endswith(".cbz") or lfn.endswith(".cbr")):
             continue
         yield os.path.join(IN_DIR, fn)
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap — Reprise après redémarrage
+# ---------------------------------------------------------------------------
+
+def recover_running_jobs(index: dict, index_path: str, in_flight: dict, config: dict):
+    """
+    Reprend proprement les jobs interrompus lors d'un redémarrage de l'orchestrateur.
+
+    Parcourt ``index["jobs"]`` (source de vérité) à la recherche des entrées en état
+    ``PREP_RUNNING`` ou ``OCR_RUNNING``. Pour chacune :
+
+    - Charge ``work/<jobKey>/state.json`` via ``safe_load_json`` pour récupérer
+      les tentatives réelles (``attemptPrep`` / ``attemptOcr``) et le ``inputPath``.
+    - Si ``state.json`` est absent ou corrompu : tentative = 1 (le run interrompu comptait),
+      ``inputPath`` = fallback ``work/<jobKey>/<inputName>``.
+    - Si le nombre de tentatives dépasse le maximum configuré : bascule en ERROR
+      (code ``max_attempts_after_restart``) et persiste l'index.
+    - Sinon : réinjecte dans ``in_flight`` avec le stage ``PREP_RETRY`` ou ``OCR_RETRY``
+      afin que le scheduler reprenne sur le tick suivant.
+
+    Ne scanne pas ``work/`` pour découvrir des jobs. Source de vérité = ``index["jobs"]``.
+
+    :param index: Index des jobs (modifié en place).
+    :param index_path: Chemin du fichier index pour persistance.
+    :param in_flight: Dict des jobs en vol (modifié en place).
+    :param config: Dict de configuration (``max_attempts_prep``, ``max_attempts_ocr``,
+                   ``work_dir``).
+    """
+    max_prep = config.get("max_attempts_prep", MAX_ATTEMPTS_PREP)
+    max_ocr = config.get("max_attempts_ocr", MAX_ATTEMPTS_OCR)
+    work_dir = config.get("work_dir", WORK_DIR)
+    recovered = 0
+
+    for job_key, entry in list(index["jobs"].items()):
+        state_in_index = entry.get("state", "")
+        if state_in_index not in ("PREP_RUNNING", "OCR_RUNNING"):
+            continue
+
+        input_name = entry.get("inputName", "unknown")
+
+        # Charger state.json pour récupérer tentatives et inputPath réels
+        ok, state_data = safe_load_json(job_state_path(job_key))
+        if ok and isinstance(state_data, dict):
+            attempt_prep = int(state_data.get("attemptPrep", 1) or 1)
+            attempt_ocr = int(state_data.get("attemptOcr", 0) or 0)
+            input_path = (
+                (state_data.get("input") or {}).get("path")
+                or os.path.join(work_dir, job_key, input_name)
+            )
+        else:
+            # Fallback : state absent/corrompu — le run interrompu compte comme 1 tentative
+            attempt_prep = 1 if state_in_index == "PREP_RUNNING" else 0
+            attempt_ocr = 1 if state_in_index == "OCR_RUNNING" else 0
+            input_path = os.path.join(work_dir, job_key, input_name)
+
+        if state_in_index == "PREP_RUNNING":
+            if attempt_prep >= max_prep:
+                _log.warning(
+                    "recover: job %s dépasse max_attempts_prep=%d => ERROR",
+                    job_key, max_prep,
+                )
+                update_state(job_key, {
+                    "state": "ERROR",
+                    "step": "PREP",
+                    "message": "max_attempts_after_restart",
+                })
+                index["jobs"][job_key]["state"] = "ERROR_PREP"
+                save_index(index, index_path)
+                continue
+            stage = "PREP_RETRY"
+        else:  # OCR_RUNNING
+            if attempt_ocr >= max_ocr:
+                _log.warning(
+                    "recover: job %s dépasse max_attempts_ocr=%d => ERROR",
+                    job_key, max_ocr,
+                )
+                update_state(job_key, {
+                    "state": "ERROR",
+                    "step": "OCR",
+                    "message": "max_attempts_after_restart",
+                })
+                index["jobs"][job_key]["state"] = "ERROR_OCR"
+                save_index(index, index_path)
+                continue
+            stage = "OCR_RETRY"
+
+        meta = {
+            "stage": stage,
+            "inputName": input_name,
+            "inputPath": input_path,
+            "attemptPrep": attempt_prep,
+            "attemptOcr": attempt_ocr,
+        }
+        # Conserver rawPdf si le job était en OCR_RUNNING
+        if state_in_index == "OCR_RUNNING" and ok and isinstance(state_data, dict):
+            raw_pdf = state_data.get("rawPdf") or os.path.join(work_dir, job_key, "raw.pdf")
+            meta["rawPdf"] = raw_pdf
+
+        in_flight[job_key] = meta
+        _log.info(
+            "Recovered job %s stage=%s attemptPrep=%d attemptOcr=%d",
+            job_key, stage, attempt_prep, attempt_ocr,
+        )
+        recovered += 1
+
+    if recovered:
+        _log.info("Bootstrap : %d job(s) récupéré(s) après redémarrage", recovered)
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +780,9 @@ def process_loop():
         # Hardening
         "max_input_size_mb": MAX_INPUT_SIZE_MB,
     }
+
+    # Bootstrap : reprise des jobs interrompus avant le premier tick
+    recover_running_jobs(index, index_path, in_flight, config)
 
     # Démarrage serveur HTTP observabilité (C)
     orch_state = OrchestratorState(

@@ -1,4 +1,106 @@
-data/
-desktop-app/target/
+# =============================================================================
+# Données et artefacts de runtime (CRITIQUE — ne jamais commiter)
+# =============================================================================
+data/                      # Volume Docker partagé (contient fichiers utilisateur)
+*.part                     # Fichiers en cours de dépôt (convention atomique)
+
+# =============================================================================
+# Python
+# =============================================================================
 **/__pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.virtualenv
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# =============================================================================
+# Java / Maven
+# =============================================================================
+desktop-app/target/
+*.class
+*.jar
+*.war
+*.ear
+*.iml
+
+# Maven wrapper (si présent mais non souhaité)
+.mvn/wrapper/maven-wrapper.jar
+
+# =============================================================================
+# IDEs et éditeurs
+# =============================================================================
+# IntelliJ IDEA
+.idea/
+*.iws
+*.ipr
+out/
+.run/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# =============================================================================
+# OS
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# =============================================================================
+# Logs et fichiers temporaires
+# =============================================================================
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+.#*
+\#*\#
+
+# =============================================================================
+# Docker
+# =============================================================================
+.dockerignore
+
+# =============================================================================
+# Backup et archives (si générés localement)
+# =============================================================================
+backup-*.zip
+collection-manager-patch.zip
+
+# =============================================================================
+# Rapports et fichiers de test (optionnel — commenter si vous voulez les garder)
+# =============================================================================
+# .pytest_cache déjà listé ci-dessus
+# htmlcov/ déjà listé ci-dessus

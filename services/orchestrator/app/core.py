@@ -6,9 +6,42 @@ import hashlib
 import json
 import os
 import time
-from typing import Optional
+from typing import Any, Optional, Tuple
 
+from app.logger import get_logger
 from app.utils import ensure_dir, atomic_write_json, now_iso
+
+_log = get_logger("orchestrator.core")
+
+
+# ---------------------------------------------------------------------------
+# Lecture sécurisée JSON
+# ---------------------------------------------------------------------------
+
+def safe_load_json(path: str) -> Tuple[bool, Any]:
+    """
+    Charge un fichier JSON sans propager d'exception vers le haut.
+
+    - Fichier absent → ``(False, "absent")``.
+    - JSON invalide ou erreur I/O → ``(False, "<message>")``, log WARN.
+    - Succès → ``(True, data_dict)``.
+
+    :param path: Chemin du fichier JSON à lire.
+    :return: Tuple ``(ok, data_or_error_message)`` — data est un dict si ok=True,
+             sinon une chaîne décrivant l'erreur.
+    """
+    if not os.path.exists(path):
+        return False, "absent"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return True, data
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        _log.warning("state.json corrompu (décodage invalide) : %s — %s", path, exc)
+        return False, f"json_corrupt: {exc}"
+    except OSError as exc:
+        _log.warning("state.json illisible (OSError) : %s — %s", path, exc)
+        return False, f"os_error: {exc}"
 
 
 # ---------------------------------------------------------------------------

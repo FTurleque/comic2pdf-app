@@ -152,6 +152,7 @@ com.comic2pdf.desktop
 | [setup.md](setup.md) | Setup Python/Java, variables d'environnement complètes, ports |
 | [testing.md](testing.md) | Tests Python (pytest) + Java (JUnit 5), stratégie de mock |
 | [operations.md](operations.md) | Observabilité HTTP, métriques, logs structurés, janitor |
+| [operations-runbook.md](operations-runbook.md) | Runbook d'exploitation — incidents, jobs bloqués, disque plein, état corrompu |
 | [contributing.md](contributing.md) | Invariants, SOLID, checklist PR, conventions |
 
 ---
