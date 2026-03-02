@@ -6,70 +6,90 @@ Ce guide détaille la stratégie de test, les commandes à exécuter et la faço
 
 ## Vue d'ensemble des tests
 
-| Module | Framework | Fichiers de test | Nombre de tests |
-|---|---|---|---|
-| `prep-service` | pytest | `test_core.py` | 12 |
-| `ocr-service` | pytest | `test_core.py`, `test_jobs.py` | 17 |
-| `orchestrator` | pytest | `test_core.py`, `test_orchestrator.py`, `test_robustness.py`, `test_http_server.py`, `test_logger.py` | 68 |
-| `desktop-app` | JUnit 5 | `ConfigServiceTest.java`, `DuplicateServiceTest.java`, `OrchestratorClientTest.java` | 21 |
+| Module | Framework | Fichiers de test |
+|---|---|---|
+| `prep-service` | pytest | `test_core.py`, `test_security.py` |
+| `ocr-service` | pytest | `test_core.py`, `test_jobs.py` |
+| `orchestrator` | pytest | `test_core.py`, `test_orchestrator.py`, `test_robustness.py`, `test_http_server.py`, `test_logger.py`, `test_auth.py`, `test_safe_path.py` |
+| `desktop-app` | JUnit 5 | `ConfigServiceTest.java`, `DuplicateServiceTest.java`, `OrchestratorClientTest.java` |
+
+> **Compteurs de tests** : les totaux évoluent à chaque ajout. Exécuter `scripts/test_all.ps1`
+> (ou `scripts/test_all.sh`) et vérifier un exit code `0` pour confirmer que tous les tests passent.
 
 ---
 
-## Tests Python (pytest)
+## Scripts de test par service
+
+Chaque service dispose de scripts dédiés qui gèrent automatiquement le venv, l'installation des dépendances et la génération des rapports de couverture.
 
 ### prep-service
 
 ```powershell
 # Windows PowerShell
-cd services\prep-service
-.\.venv\Scripts\Activate.ps1  # ou activer le venv si déjà créé
-pytest -q
+.\scripts\test_prep.ps1
 ```
 
 ```bash
 # Linux / macOS
-cd services/prep-service
-source .venv/bin/activate
-pytest -q
+./scripts/test_prep.sh
 ```
-
-**Résultat attendu** : `12 passed` (ou similar)
 
 ### ocr-service
 
 ```powershell
-# Windows PowerShell
-cd services\ocr-service
-.\.venv\Scripts\Activate.ps1
-pytest -q
+.\scripts\test_ocr.ps1
 ```
 
 ```bash
-# Linux / macOS
-cd services/ocr-service
-source .venv/bin/activate
-pytest -q
+./scripts/test_ocr.sh
 ```
-
-**Résultat attendu** : `17 passed`
 
 ### orchestrator
 
 ```powershell
-# Windows PowerShell
-cd services\orchestrator
-.\.venv\Scripts\Activate.ps1
-pytest -q
+.\scripts\test_orchestrator.ps1
 ```
 
 ```bash
-# Linux / macOS
-cd services/orchestrator
-source .venv/bin/activate
-pytest -q
+./scripts/test_orchestrator.sh
 ```
 
-**Résultat attendu** : `68 passed`
+> **Venv automatique** : si `.venv` est absent dans le dossier du service, le script le crée
+> (`py -3` sur Windows, `python3` sur Linux/macOS). Le Python du venv est utilisé directement
+> via son chemin absolu (`.venv/Scripts/python.exe` / `.venv/bin/python`).
+
+---
+
+## Rapports de couverture Python
+
+Chaque script de service génère trois sorties dans le dossier du service :
+
+| Sortie | Emplacement | Usage |
+|---|---|---|
+| Terminal | stdout | Aperçu rapide des lignes non couvertes |
+| XML | `services/<service>/coverage.xml` | Intégration CI (Codecov, SonarQube, etc.) |
+| HTML | `services/<service>/htmlcov/index.html` | Navigation locale détaillée |
+
+> Ces fichiers sont ignorés par Git (`.gitignore` — patterns `services/**/coverage.xml`
+> et `services/**/htmlcov/`).
+
+---
+
+## Tests Python (pytest)
+
+Les scripts ci-dessus exécutent :
+
+```
+pytest -q --tb=short \
+    --cov=app \
+    --cov-report=term-missing \
+    --cov-report=xml:coverage.xml \
+    --cov-report=html:htmlcov \
+    tests/
+```
+
+La configuration pytest de chaque service est dans `pytest.ini` (`testpaths = tests`).
+Les options de coverage et de verbosité restent dans les scripts (zéro duplication).
 
 ---
 
@@ -87,7 +107,7 @@ cd desktop-app
 mvn test
 ```
 
-**Résultat attendu** : `BUILD SUCCESS` — `Tests run: 21, Failures: 0, Errors: 0`
+**Résultat attendu** : `BUILD SUCCESS` — voir exit code `0` (le nombre de tests évolue).
 
 > Aucune instance JavaFX n'est démarrée pendant ces tests. Ils portent uniquement sur la logique de service (filesystem, HTTP parsing).
 
@@ -101,21 +121,23 @@ Pour les exécuter, utiliser le profil Maven `ui-tests`.
 ### Mode visuel par défaut (requiert un écran)
 
 ```powershell
-# Windows PowerShell
+# Windows PowerShell — via le script dédié (recommandé)
+.\scripts\test_desktop.ps1 -Ui
+
+# ou directement
 cd desktop-app
 mvn -Pui-tests test
 
-# ou via le script
+# ou via l'ancien script
 .\scripts\run_ui_tests.ps1
 ```
 
 ```bash
 # Linux / macOS
+./scripts/test_desktop.sh --ui
+# ou
 cd desktop-app
 mvn -Pui-tests test
-
-# ou via le script
-./scripts/run_ui_tests.sh
 ```
 
 **Résultat attendu** : `BUILD SUCCESS` — `Tests run: 4, Failures: 0, Errors: 0`
@@ -124,11 +146,8 @@ mvn -Pui-tests test
 
 ```powershell
 # Windows PowerShell
-cd desktop-app
-mvn -Pui-tests test -Dtestfx.headless=true -Dprism.order=sw -Dprism.verbose=true
-
-# ou via le script
 .\scripts\run_ui_tests_headless.ps1
+# flags : -Dtestfx.headless=true -Dprism.order=sw -Dprism.verbose=true
 ```
 
 ```bash
@@ -162,23 +181,46 @@ Ne pas ajouter `@Execution(CONCURRENT)` sur les classes de tests UI.
 
 ---
 
-## Script global `run_tests.ps1`
+## Scripts globaux — lancer tous les tests
 
-Lance tous les tests Python et Java en une seule commande depuis la racine :
+### `scripts/test_all.ps1` (point d'entrée officiel)
 
 ```powershell
-# Windows PowerShell (depuis la racine du dépôt)
+# Windows PowerShell — depuis la racine du dépôt
+.\scripts\test_all.ps1
+
+# Avec résumé complet même en cas d'échec intermédiaire
+.\scripts\test_all.ps1 -ContinueOnError
+```
+
+### `scripts/test_all.sh` (Linux / macOS)
+
+```bash
+./scripts/test_all.sh
+
+# Avec résumé complet
+./scripts/test_all.sh --continue-on-error
+```
+
+### `run_tests.ps1` (alias backward-compatible)
+
+```powershell
+# Depuis la racine — identique à scripts/test_all.ps1
 .\run_tests.ps1
 ```
 
-Le script :
-1. Installe les dépendances dev de chaque service Python (`pip install -r requirements-dev.txt`)
-2. Lance `pytest -q` dans chaque service Python
-3. Lance `mvn -q test` dans `desktop-app`
-4. Affiche un résumé coloré `PASS` / `FAIL` par module
-5. Retourne `exit 1` si au moins un module échoue
+> `run_tests.ps1` est un alias qui délègue à `scripts/test_all.ps1`. Tous les paramètres
+> sont transmis. Préférer `scripts/test_all.ps1` pour les nouveaux usages.
+
+Les scripts globaux :
+1. Exécutent chaque script de service individuel (`test_prep`, `test_ocr`, `test_orchestrator`)
+2. Exécutent `mvn test` dans `desktop-app/` via `scripts/test_desktop.ps1`
+3. S'arrêtent au premier échec par défaut (comportement CI)
+4. Affichent un résumé coloré `PASS` / `FAIL` par module
+5. Retournent `exit 1` si au moins un module échoue
 
 ---
+
 
 ## Stratégie de mock
 
