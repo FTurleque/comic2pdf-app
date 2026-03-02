@@ -10,16 +10,20 @@ import javafx.beans.property.StringProperty;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Service de connectivité vers l'orchestrateur.
  *
  * <p>Maintient un {@link BooleanProperty} {@code online} observable par l'UI.
- * Quand offline, un ping léger toutes les 15 secondes tente la reconnexion.</p>
+ * Quand offline, un ping léger toutes les {@value #PING_INTERVAL_SECONDS} secondes
+ * tente la reconnexion automatique.</p>
  *
- * <p><b>Thread-safety :</b> toute mutation des propriétés JavaFX passe
- * exclusivement par {@code Platform.runLater()}. Les assertions de debug
- * (activées avec {@code -ea}) valident le thread appelant.</p>
+ * <h2>Thread-safety (R4)</h2>
+ * <p>Le scheduler daemon ne lit ni ne mute aucune Property JavaFX directement.
+ * L'état offline est maintenu dans {@code offlineFlag} ({@link AtomicBoolean} thread-safe).
+ * {@link #markOnline()} et {@link #markOffline(String)} se reroutent automatiquement
+ * via {@code Platform.runLater()} si appelés hors du FX thread.</p>
  */
 public class ConnectivityService {
 
@@ -28,7 +32,13 @@ public class ConnectivityService {
     private final BooleanProperty online        = new SimpleBooleanProperty(true);
     private final StringProperty  offlineReason = new SimpleStringProperty("");
 
-    private final OrchestratorClient      client;
+    /**
+     * Flag thread-safe lu par le scheduler daemon.
+     * Évite toute lecture de {@link BooleanProperty} JavaFX hors du FX thread.
+     */
+    private final AtomicBoolean offlineFlag = new AtomicBoolean(false);
+
+    private final OrchestratorClient       client;
     private final ScheduledExecutorService scheduler;
     private volatile Runnable onComeOnline;
 
@@ -52,8 +62,11 @@ public class ConnectivityService {
     /** @return Propriété observable (true = en ligne). */
     public BooleanProperty onlineProperty() { return online; }
 
-    /** @return true si l'orchestrateur est considéré accessible. */
-    public boolean isOnline() { return online.get(); }
+    /**
+     * @return {@code true} si l'orchestrateur est considéré accessible.
+     * Thread-safe : utilise {@link AtomicBoolean}, pas la {@link BooleanProperty}.
+     */
+    public boolean isOnline() { return !offlineFlag.get(); }
 
     /** @return Propriété raison d'offline, chaîne vide si en ligne. */
     public StringProperty offlineReasonProperty() { return offlineReason; }
@@ -61,7 +74,7 @@ public class ConnectivityService {
     /**
      * Définit un callback exécuté sur le FX thread quand la connexion revient.
      *
-     * @param onComeOnline Runnable appelé via {@code Platform.runLater} au retour en ligne.
+     * @param onComeOnline Runnable appelé au retour en ligne.
      */
     public void setOnComeOnline(Runnable onComeOnline) {
         this.onComeOnline = onComeOnline;
@@ -69,31 +82,38 @@ public class ConnectivityService {
 
     /**
      * Marque l'orchestrateur comme accessible.
-     * Doit être appelé uniquement depuis le FX Application Thread.
+     * Se reroute automatiquement via {@code Platform.runLater()} si appelé hors du FX thread.
      */
     public void markOnline() {
-        assert Platform.isFxApplicationThread()
-                : "ConnectivityService.markOnline() appelé hors du FX thread !";
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(this::markOnline);
+            return;
+        }
+        offlineFlag.set(false);
         online.set(true);
         offlineReason.set("");
     }
 
     /**
      * Marque l'orchestrateur comme inaccessible avec une raison courte.
-     * Doit être appelé uniquement depuis le FX Application Thread.
+     * Se reroute automatiquement via {@code Platform.runLater()} si appelé hors du FX thread.
      *
      * @param reason Raison courte affichée dans la bannière (peut être null).
      */
     public void markOffline(String reason) {
-        assert Platform.isFxApplicationThread()
-                : "ConnectivityService.markOffline() appelé hors du FX thread !";
+        if (!Platform.isFxApplicationThread()) {
+            final String r = reason;
+            Platform.runLater(() -> markOffline(r));
+            return;
+        }
+        offlineFlag.set(true);
         online.set(false);
         offlineReason.set(reason != null ? reason : "");
     }
 
     /**
      * Arrête proprement le scheduler de ping.
-     * Doit être appelé depuis {@code JobsController.stop()}.
+     * Appeler depuis {@code JobsController.stop()}.
      */
     public void shutdown() {
         scheduler.shutdownNow();
@@ -103,12 +123,14 @@ public class ConnectivityService {
     // Privé — ping daemon
     // -----------------------------------------------------------------------
 
-    /** Ping exécuté sur le thread daemon — ne touche JAMAIS les Property directement. */
+    /**
+     * Ping exécuté sur le thread daemon.
+     * Lit uniquement {@code offlineFlag} ({@link AtomicBoolean}) — jamais de Property JavaFX.
+     */
     private void ping() {
-        if (online.get()) return; // déjà en ligne
+        if (!offlineFlag.get()) return; // déjà en ligne — AtomicBoolean, pas online.get()
         try {
             client.getJobsOrThrow();
-            // Succès : repasser en ligne sur le FX thread
             Platform.runLater(() -> {
                 markOnline();
                 Runnable cb = onComeOnline;
@@ -119,4 +141,3 @@ public class ConnectivityService {
         }
     }
 }
-

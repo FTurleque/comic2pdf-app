@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<VBox xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.comic2pdf.desktop.ui.controller.JobDetailPanelController"
+      spacing="6" minWidth="260" prefWidth="320">
+    <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+    <Label fx:id="emptyLabel" text="Selectionner un job pour voir les details."
+           wrapText="true" style="-fx-text-fill: grey;"/>
+    <HBox fx:id="loadingBox" visible="false" managed="false" spacing="6" alignment="CENTER_LEFT">
+        <ProgressIndicator prefWidth="16" prefHeight="16"/>
+        <Label text="Chargement..."/>
+    </HBox>
+    <Label fx:id="errorLabel" visible="false" managed="false" wrapText="true" style="-fx-text-fill: red;"/>
+    <VBox fx:id="detailContent" visible="false" managed="false" spacing="5">
+        <Label text="Details du job" style="-fx-font-weight: bold; -fx-font-size: 13;"/>
+        <Separator/>
+        <GridPane hgap="8" vgap="4">
+            <Label text="Job Key :"        GridPane.columnIndex="0" GridPane.rowIndex="0" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailJobKey"    GridPane.columnIndex="1" GridPane.rowIndex="0" wrapText="true"/>
+            <Label text="Etat :"           GridPane.columnIndex="0" GridPane.rowIndex="1" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailState"     GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+            <Label text="Etape :"          GridPane.columnIndex="0" GridPane.rowIndex="2" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailStage"     GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+            <Label text="Tentative :"      GridPane.columnIndex="0" GridPane.rowIndex="3" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailAttempt"   GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+            <Label text="Fichier :"        GridPane.columnIndex="0" GridPane.rowIndex="4" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailInputName" GridPane.columnIndex="1" GridPane.rowIndex="4" wrapText="true"/>
+            <Label text="Demarre :"        GridPane.columnIndex="0" GridPane.rowIndex="5" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailStartedAt" GridPane.columnIndex="1" GridPane.rowIndex="5"/>
+            <Label text="Termine :"        GridPane.columnIndex="0" GridPane.rowIndex="6" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailEndedAt"   GridPane.columnIndex="1" GridPane.rowIndex="6"/>
+            <Label text="Duree :"          GridPane.columnIndex="0" GridPane.rowIndex="7" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailDuration"  GridPane.columnIndex="1" GridPane.rowIndex="7"/>
+            <Label text="Mis a jour :"     GridPane.columnIndex="0" GridPane.rowIndex="8" style="-fx-font-weight: bold;"/>
+            <Label fx:id="detailUpdatedAt" GridPane.columnIndex="1" GridPane.rowIndex="8"/>
+        </GridPane>
+        <Separator/>
+        <Label text="Logs / Sortie" style="-fx-font-weight: bold;"/>
+        <TextArea fx:id="detailLogsArea" editable="false" wrapText="true" prefHeight="160"
+                  style="-fx-font-family: monospace; -fx-font-size: 11;">
+            <VBox.vgrow>ALWAYS</VBox.vgrow>
+        </TextArea>
+        <HBox spacing="6">
+            <Button fx:id="detailCopyErrorBtn"  text="Copier erreur"  onAction="#onCopyError"/>
+            <Button fx:id="detailCopyOutPdfBtn" text="Copier outPdf" onAction="#onCopyOutPdf"/>
+            <Button fx:id="detailReloadBtn"     text="Recharger"     onAction="#onReloadDetail"/>
+        </HBox>
+    </VBox>
+</VBox>
