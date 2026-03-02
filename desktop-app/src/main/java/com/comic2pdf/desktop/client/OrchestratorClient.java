@@ -112,16 +112,28 @@ public class OrchestratorClient {
      */
     public List<JobRow> getJobs() {
         try {
-            String body = get("/jobs");
-            JsonNode arr = mapper.readTree(body);
-            List<JobRow> rows = new ArrayList<>();
-            for (JsonNode node : arr) {
-                rows.add(parseJobRow(node));
-            }
-            return rows;
+            return getJobsOrThrow();
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    /**
+     * Récupère la liste des jobs en propageant toute exception réseau.
+     * Utilisé par {@link com.comic2pdf.desktop.service.ConnectivityService} pour le ping
+     * et par {@code JobsController} pour la détection offline.
+     *
+     * @return Liste de {@link JobRow}.
+     * @throws Exception En cas d'erreur réseau ou HTTP.
+     */
+    public List<JobRow> getJobsOrThrow() throws Exception {
+        String body = get("/jobs");
+        JsonNode arr = mapper.readTree(body);
+        List<JobRow> rows = new ArrayList<>();
+        for (JsonNode node : arr) {
+            rows.add(parseJobRow(node));
+        }
+        return rows;
     }
 
     /**
@@ -132,12 +144,23 @@ public class OrchestratorClient {
      */
     public Optional<JobRow> getJob(String jobKey) {
         try {
-            String body = get("/jobs/" + jobKey);
-            JsonNode node = mapper.readTree(body);
-            return Optional.of(parseJobRow(node));
+            return Optional.of(getJobOrThrow(jobKey));
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Récupère les détails d'un job en propageant toute exception réseau.
+     *
+     * @param jobKey Clé du job.
+     * @return {@link JobRow} détaillé.
+     * @throws Exception En cas d'erreur réseau, HTTP ou job introuvable.
+     */
+    public JobRow getJobOrThrow(String jobKey) throws Exception {
+        String body = get("/jobs/" + jobKey);
+        JsonNode node = mapper.readTree(body);
+        return parseJobRow(node);
     }
 
     /**
@@ -228,7 +251,9 @@ public class OrchestratorClient {
                 node.path("updatedAt").asText(""),
                 node.path("inputName").asText(""),
                 node.path("outPdf").asText(""),
-                node.path("errorMessage").asText("")
+                node.path("errorMessage").asText(""),
+                node.path("startedAt").asText(""),
+                node.path("endedAt").asText("")
         );
     }
 }

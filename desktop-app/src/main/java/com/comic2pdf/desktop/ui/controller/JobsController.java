@@ -2,7 +2,9 @@ package com.comic2pdf.desktop.ui.controller;
 
 import com.comic2pdf.desktop.model.JobRow;
 import com.comic2pdf.desktop.service.AppServices;
+import com.comic2pdf.desktop.service.ConnectivityService;
 import com.comic2pdf.desktop.util.FxUtils;
+import com.comic2pdf.desktop.util.JobDurationUtils;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -13,14 +15,14 @@ import javafx.concurrent.ScheduledService;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
+import javafx.scene.layout.HBox;
 import javafx.util.Duration;
 
 import java.nio.file.Paths;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -28,50 +30,315 @@ import java.util.stream.Collectors;
  *
  * <p>Fonctionnalités :</p>
  * <ul>
- *   <li>Polling automatique toutes les 3 secondes via {@link ScheduledService} (sans freeze UI).</li>
- *   <li>Backoff exponentiel si l'orchestrateur est indisponible (3s → 6s → 12s → max 30s).</li>
- *   <li>Bannière "offline" visible si l'orchestrateur est inaccessible.</li>
- *   <li>Recherche textuelle sur jobKey / nom de fichier.</li>
- *   <li>Filtres par état (ALL / DONE / ERROR / RUNNING / WAITING).</li>
- *   <li>Panneau de détail enrichi au clic sur une ligne.</li>
+ *   <li>Polling automatique via {@link ScheduledService} avec backoff exponentiel.</li>
+ *   <li>Refresh manuel async (Task + Platform.runLater) compatible test {@code < 3s}.</li>
+ *   <li>Recherche textuelle avec debounce 250 ms + filtre par état ({@link FilteredList}).</li>
+ *   <li>Panneau latéral de détail via {@link JobDetailPanelController} ({@code fx:include}).</li>
+ *   <li>Bannière offline + retry via {@link ConnectivityService} (toutes mutations FX thread).</li>
  * </ul>
  */
 public class JobsController {
 
     // Intervalles de backoff (secondes)
     private static final double REFRESH_INTERVAL_BASE = 3.0;
-    private static final double REFRESH_INTERVAL_MAX = 30.0;
+    private static final double REFRESH_INTERVAL_MAX  = 30.0;
 
+    // -----------------------------------------------------------------------
+    // FXML — IDs STABLES (NE PAS RENOMMER — compatibilité tests UI)
+    // -----------------------------------------------------------------------
     @FXML private TableView<JobRow> jobsTable;
-    @FXML private Label jobsStatusLabel;
-    @FXML private Label offlineBanner;
-    @FXML private TextField jobSearchField;
+    @FXML private Label             jobsStatusLabel;
+
+    // -----------------------------------------------------------------------
+    // FXML — Bannière offline
+    // -----------------------------------------------------------------------
+    @FXML private HBox  offlineBannerBox;
+    @FXML private Label offlineReasonLabel;
+
+    // -----------------------------------------------------------------------
+    // FXML — Recherche et filtres
+    // -----------------------------------------------------------------------
+    @FXML private TextField        jobSearchField;
     @FXML private ComboBox<String> jobStateFilter;
 
-    // Panneau de détail
-    @FXML private Label detailJobKey;
-    @FXML private Label detailState;
-    @FXML private Label detailStage;
-    @FXML private Label detailAttempt;
-    @FXML private Label detailUpdatedAt;
-    @FXML private Label detailInputName;
-    @FXML private Label detailOutPdf;
-    @FXML private Label detailError;
+    // -----------------------------------------------------------------------
+    // FXML — Panneau détail (injecté via fx:include)
+    // -----------------------------------------------------------------------
+    @FXML private JobDetailPanelController jobDetailPanelController;
 
-    private AppServices services;
-    private boolean autoRefresh = true;
-    private ScheduledService<List<JobRow>> refreshService;
-    private final ObservableList<JobRow> rows = FXCollections.observableArrayList();
-    private FilteredList<JobRow> filteredRows;
-    private double currentIntervalSeconds = REFRESH_INTERVAL_BASE;
-    private boolean isOffline = false;
+    // -----------------------------------------------------------------------
+    // État interne
+    // -----------------------------------------------------------------------
+    private AppServices        services;
+    private ConnectivityService connectivityService;
+    private boolean            autoRefresh = true;
+
+    private final ObservableList<JobRow> masterList      = FXCollections.observableArrayList();
+    private FilteredList<JobRow>         filteredList;
+    private final AtomicLong             detailRequestSeq = new AtomicLong(0);
+
+    private ScheduledService<List<JobRow>> scheduledRefresh;
+    private double currentIntervalS = REFRESH_INTERVAL_BASE;
+
+    // -----------------------------------------------------------------------
+    // Initialisation
+    // -----------------------------------------------------------------------
 
     /**
-     * Initialisation FXML : configure les colonnes, la recherche, les filtres et le panneau détail.
+     * Initialisation FXML : configure colonnes, filtres, sélection, bannière.
      */
     @FXML
     public void initialize() {
-        // Colonnes de la table
+        buildColumns();
+
+        // FilteredList + SortedList — tri conservé
+        filteredList = new FilteredList<>(masterList, p -> true);
+        SortedList<JobRow> sortedList = new SortedList<>(filteredList);
+        sortedList.comparatorProperty().bind(jobsTable.comparatorProperty());
+        jobsTable.setItems(sortedList);
+
+        // ComboBox états
+        jobStateFilter.getItems().addAll(
+                "Tous", "DONE", "ERROR", "PREP_RUNNING", "OCR_RUNNING",
+                "QUEUED", "DUPLICATE_PENDING");
+        jobStateFilter.setValue("Tous");
+        jobStateFilter.valueProperty().addListener((o, ov, nv) -> applyFilter());
+
+        // Recherche avec debounce 250 ms
+        PauseTransition debounce = new PauseTransition(Duration.millis(250));
+        debounce.setOnFinished(e -> applyFilter());
+        jobSearchField.textProperty().addListener((o, ov, nv) -> {
+            debounce.stop();
+            debounce.playFromStart();
+        });
+
+        // Sélection ligne → chargement panneau détail
+        jobsTable.getSelectionModel().selectedItemProperty()
+                .addListener((o, old, sel) -> onRowSelected(sel));
+
+        // Bannière offline masquée par défaut
+        setOfflineBannerVisible(false, "");
+    }
+
+    /**
+     * Injecte les services, lie la bannière offline et démarre le polling.
+     *
+     * @param services Services partagés de l'application.
+     */
+    public void setServices(AppServices services) {
+        this.services = services;
+
+        // ConnectivityService thread-safe
+        connectivityService = new ConnectivityService(services.getOrchestratorClient());
+        connectivityService.setOnComeOnline(this::onRefreshJobs);
+        connectivityService.onlineProperty().addListener((o, ov, online) -> {
+            assert Platform.isFxApplicationThread();
+            if (online) {
+                setOfflineBannerVisible(false, "");
+            } else {
+                setOfflineBannerVisible(true,
+                        connectivityService.offlineReasonProperty().get());
+            }
+        });
+
+        // Injecter le client dans le panneau détail
+        if (jobDetailPanelController != null) {
+            jobDetailPanelController.setClient(services.getOrchestratorClient());
+        }
+
+        if (autoRefresh) {
+            startScheduledRefresh();
+        }
+    }
+
+    /**
+     * Active ou désactive le polling automatique.
+     * Doit être appelé AVANT {@link #setServices(AppServices)}.
+     *
+     * @param autoRefresh false pour désactiver (utile en tests).
+     */
+    public void setAutoRefresh(boolean autoRefresh) {
+        this.autoRefresh = autoRefresh;
+    }
+
+    // -----------------------------------------------------------------------
+    // Actions FXML
+    // -----------------------------------------------------------------------
+
+    /**
+     * Rafraîchit manuellement la liste des jobs.
+     * Exécuté en async (Task + Platform.runLater) — ne bloque pas le FX thread.
+     * Compatible test : aucun Thread.sleep, completion &lt; 3s.
+     */
+    @FXML
+    public void onRefreshJobs() {
+        if (services == null) return;
+        Task<List<JobRow>> task = new Task<>() {
+            @Override
+            protected List<JobRow> call() throws Exception {
+                return services.getOrchestratorClient().getJobsOrThrow();
+            }
+        };
+        task.setOnSucceeded(e -> Platform.runLater(() -> {
+            @SuppressWarnings("unchecked")
+            List<JobRow> fresh = (List<JobRow>) e.getSource().getValue();
+            updateMasterList(fresh);
+            jobsStatusLabel.setText("Rafraîchi : " + LocalTime.now().withNano(0));
+            connectivityService.markOnline();
+            currentIntervalS = REFRESH_INTERVAL_BASE;
+        }));
+        task.setOnFailed(e -> Platform.runLater(() -> {
+            String msg = task.getException() != null
+                    ? task.getException().getMessage() : "erreur inconnue";
+            jobsStatusLabel.setText("Inaccessible : " + msg);
+            connectivityService.markOffline(msg);
+            // masterList conservée — pas de vidage
+        }));
+        Thread t = new Thread(task, "jobs-refresh");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** Efface la recherche et le filtre état. */
+    @FXML
+    private void onClearFilter() {
+        jobSearchField.setText("");
+        jobStateFilter.setValue("Tous");
+    }
+
+    /** Ouvre le dossier {@code data/out/} dans l'explorateur système. */
+    @FXML
+    private void onOpenOutDir() {
+        if (services == null) return;
+        FxUtils.openDirectory(Paths.get(services.getInitialDataDir()).resolve("out"));
+    }
+
+    /**
+     * Arrête le polling et le ConnectivityService.
+     * À appeler lors de la fermeture de la fenêtre.
+     */
+    public void stop() {
+        if (scheduledRefresh != null) scheduledRefresh.cancel();
+        if (connectivityService != null) connectivityService.shutdown();
+    }
+
+    // -----------------------------------------------------------------------
+    // Privé — sélection et panneau détail
+    // -----------------------------------------------------------------------
+
+    private void onRowSelected(JobRow row) {
+        if (jobDetailPanelController == null) return;
+        if (row == null) {
+            jobDetailPanelController.showEmpty();
+            return;
+        }
+        long seq = detailRequestSeq.incrementAndGet();
+        jobDetailPanelController.showLoading();
+
+        Task<JobRow> task = new Task<>() {
+            @Override
+            protected JobRow call() throws Exception {
+                return services.getOrchestratorClient().getJobOrThrow(row.getJobKey());
+            }
+        };
+        task.setOnSucceeded(e -> Platform.runLater(() -> {
+            if (detailRequestSeq.get() != seq) return; // sélection obsolète
+            JobRow detail = task.getValue();
+            String duration = JobDurationUtils.compute(
+                    detail.getStartedAt(), detail.getEndedAt());
+            jobDetailPanelController.showDetail(detail, duration);
+            jobDetailPanelController.setLogSections(
+                    detail.getErrorMessage(), detail.getOutPdf());
+        }));
+        task.setOnFailed(e -> Platform.runLater(() -> {
+            if (detailRequestSeq.get() != seq) return;
+            // Repli : afficher données de la liste (déjà chargées)
+            String duration = JobDurationUtils.compute(
+                    row.getStartedAt(), row.getEndedAt());
+            jobDetailPanelController.showDetail(row, duration);
+            jobDetailPanelController.setLogSections(
+                    row.getErrorMessage(), row.getOutPdf());
+        }));
+        Thread t = new Thread(task, "detail-load");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    // -----------------------------------------------------------------------
+    // Privé — polling automatique
+    // -----------------------------------------------------------------------
+
+    private void startScheduledRefresh() {
+        scheduledRefresh = new ScheduledService<>() {
+            @Override
+            protected Task<List<JobRow>> createTask() {
+                return new Task<>() {
+                    @Override
+                    protected List<JobRow> call() throws Exception {
+                        return services.getOrchestratorClient().getJobsOrThrow();
+                    }
+                };
+            }
+        };
+        scheduledRefresh.setPeriod(Duration.seconds(currentIntervalS));
+        scheduledRefresh.setOnSucceeded(e -> {
+            @SuppressWarnings("unchecked")
+            List<JobRow> fresh = (List<JobRow>) e.getSource().getValue();
+            Platform.runLater(() -> {
+                updateMasterList(fresh);
+                jobsStatusLabel.setText("Rafraîchi : " + LocalTime.now().withNano(0));
+                if (!connectivityService.isOnline()) {
+                    connectivityService.markOnline();
+                    currentIntervalS = REFRESH_INTERVAL_BASE;
+                    scheduledRefresh.setPeriod(Duration.seconds(currentIntervalS));
+                }
+            });
+        });
+        scheduledRefresh.setOnFailed(e -> Platform.runLater(() -> {
+            currentIntervalS = Math.min(currentIntervalS * 2, REFRESH_INTERVAL_MAX);
+            scheduledRefresh.setPeriod(Duration.seconds(currentIntervalS));
+            String msg = e.getSource().getException() != null
+                    ? e.getSource().getException().getMessage() : "inconnue";
+            jobsStatusLabel.setText("Inaccessible : " + msg);
+            connectivityService.markOffline(msg);
+        }));
+        scheduledRefresh.start();
+    }
+
+    // -----------------------------------------------------------------------
+    // Privé — helpers
+    // -----------------------------------------------------------------------
+
+    private void applyFilter() {
+        String search = jobSearchField.getText().toLowerCase().trim();
+        String state  = jobStateFilter.getValue();
+        filteredList.setPredicate(row -> {
+            boolean matchSearch = search.isEmpty()
+                    || row.getJobKey().toLowerCase().contains(search)
+                    || row.getInputName().toLowerCase().contains(search);
+            boolean matchState = "Tous".equals(state)
+                    || row.getState().equalsIgnoreCase(state);
+            return matchSearch && matchState;
+        });
+    }
+
+    private void updateMasterList(List<JobRow> freshRows) {
+        assert Platform.isFxApplicationThread();
+        Map<String, JobRow> existing = masterList.stream()
+                .collect(Collectors.toMap(JobRow::getJobKey, r -> r));
+        for (JobRow fresh : freshRows) {
+            JobRow cur = existing.remove(fresh.getJobKey());
+            if (cur != null) {
+                cur.updateFrom(fresh);
+            } else {
+                masterList.add(fresh);
+            }
+        }
+        masterList.removeIf(r -> freshRows.stream()
+                .noneMatch(f -> f.getJobKey().equals(r.getJobKey())));
+    }
+
+    private void buildColumns() {
         TableColumn<JobRow, String> colKey = new TableColumn<>("Job Key");
         colKey.setCellValueFactory(c -> c.getValue().jobKeyProperty());
         colKey.setPrefWidth(220);
@@ -86,7 +353,7 @@ public class JobsController {
 
         TableColumn<JobRow, String> colStage = new TableColumn<>("Étape");
         colStage.setCellValueFactory(c -> c.getValue().stageProperty());
-        colStage.setPrefWidth(120);
+        colStage.setPrefWidth(100);
 
         TableColumn<JobRow, String> colAttempt = new TableColumn<>("Tentative");
         colAttempt.setCellValueFactory(c -> c.getValue().attemptProperty());
@@ -99,235 +366,16 @@ public class JobsController {
         //noinspection unchecked
         jobsTable.getColumns().addAll(colKey, colFile, colState, colStage, colAttempt, colUpdated);
         jobsTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+    }
 
-        // Filtrage et recherche
-        filteredRows = new FilteredList<>(rows, p -> true);
-        SortedList<JobRow> sortedRows = new SortedList<>(filteredRows);
-        sortedRows.comparatorProperty().bind(jobsTable.comparatorProperty());
-        jobsTable.setItems(sortedRows);
-
-        // Filtres état
-        if (jobStateFilter != null) {
-            jobStateFilter.getItems().addAll("Tous", "DONE", "ERROR", "RUNNING", "QUEUED");
-            jobStateFilter.setValue("Tous");
-            jobStateFilter.valueProperty().addListener((obs, o, n) -> updateFilter());
+    private void setOfflineBannerVisible(boolean visible, String reason) {
+        assert Platform.isFxApplicationThread();
+        if (offlineBannerBox != null) {
+            offlineBannerBox.setVisible(visible);
+            offlineBannerBox.setManaged(visible);
         }
-
-        // Recherche textuelle
-        if (jobSearchField != null) {
-            jobSearchField.textProperty().addListener((obs, o, n) -> updateFilter());
+        if (offlineReasonLabel != null && reason != null) {
+            offlineReasonLabel.setText(reason);
         }
-
-        // Sélection → panneau détail
-        jobsTable.getSelectionModel().selectedItemProperty().addListener(
-                (obs, old, selected) -> showDetail(selected));
-
-        // Bannière offline masquée par défaut
-        if (offlineBanner != null) {
-            offlineBanner.setVisible(false);
-            offlineBanner.setManaged(false);
-        }
-    }
-
-    /**
-     * Injecte les services et démarre le polling si {@code autoRefresh=true}.
-     *
-     * @param services Services partagés de l'application.
-     */
-    public void setServices(AppServices services) {
-        this.services = services;
-        if (autoRefresh) {
-            startRefreshService();
-        }
-    }
-
-    /**
-     * Active ou désactive le polling automatique.
-     * Doit être appelé AVANT {@link #setServices(AppServices)}.
-     *
-     * @param autoRefresh {@code false} pour désactiver le polling (utile en tests).
-     */
-    public void setAutoRefresh(boolean autoRefresh) {
-        this.autoRefresh = autoRefresh;
-    }
-
-    /** Rafraîchit manuellement la liste des jobs depuis l'orchestrateur. */
-    @FXML
-    public void onRefreshJobs() {
-        if (services == null) return;
-        List<JobRow> fresh = services.getOrchestratorClient().getJobs();
-        updateTable(fresh);
-        jobsStatusLabel.setText("Rafraîchi manuellement à " + LocalTime.now().withNano(0));
-    }
-
-    /** Ouvre le dossier {@code data/out/} dans l'explorateur système. */
-    @FXML
-    private void onOpenOutDir() {
-        if (services == null) return;
-        FxUtils.openDirectory(Paths.get(services.getInitialDataDir()).resolve("out"));
-    }
-
-    /** Copie le jobKey du job sélectionné dans le presse-papiers. */
-    @FXML
-    private void onCopyJobKey() {
-        JobRow selected = jobsTable.getSelectionModel().getSelectedItem();
-        if (selected == null || selected.getJobKey().isBlank()) return;
-        copyToClipboard(selected.getJobKey());
-        jobsStatusLabel.setText("JobKey copié : " + abbreviate(selected.getJobKey(), 20));
-    }
-
-    /** Copie le message d'erreur du job sélectionné. */
-    @FXML
-    private void onCopyError() {
-        JobRow selected = jobsTable.getSelectionModel().getSelectedItem();
-        if (selected == null || selected.getErrorMessage().isBlank()) {
-            jobsStatusLabel.setText("Aucune erreur à copier.");
-            return;
-        }
-        copyToClipboard(selected.getErrorMessage());
-        jobsStatusLabel.setText("Erreur copiée.");
-    }
-
-    /** Ouvre le dossier work/ du job sélectionné. */
-    @FXML
-    private void onOpenWorkDir() {
-        JobRow selected = jobsTable.getSelectionModel().getSelectedItem();
-        if (selected == null) return;
-        FxUtils.openDirectory(Paths.get(services.getInitialDataDir())
-                .resolve("work").resolve(selected.getJobKey()));
-    }
-
-    /** Ouvre le fichier PDF de sortie du job sélectionné. */
-    @FXML
-    private void onOpenOutPdf() {
-        JobRow selected = jobsTable.getSelectionModel().getSelectedItem();
-        if (selected == null || selected.getOutPdf().isBlank()) {
-            jobsStatusLabel.setText("Pas de PDF disponible pour ce job.");
-            return;
-        }
-        FxUtils.openFile(Paths.get(selected.getOutPdf()));
-    }
-
-    /**
-     * Arrête le service de polling (à appeler lors de la fermeture de la fenêtre).
-     */
-    public void stop() {
-        if (refreshService != null) {
-            refreshService.cancel();
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Helpers privés
-    // -----------------------------------------------------------------------
-
-    private void startRefreshService() {
-        refreshService = new ScheduledService<>() {
-            @Override
-            protected Task<List<JobRow>> createTask() {
-                return new Task<>() {
-                    @Override
-                    protected List<JobRow> call() {
-                        return services.getOrchestratorClient().getJobs();
-                    }
-                };
-            }
-        };
-        refreshService.setPeriod(Duration.seconds(currentIntervalSeconds));
-        refreshService.setOnSucceeded(e -> {
-            @SuppressWarnings("unchecked")
-            List<JobRow> freshRows = (List<JobRow>) e.getSource().getValue();
-            updateTable(freshRows);
-            jobsStatusLabel.setText("Rafraîchi : " + LocalTime.now().withNano(0));
-            // Reconnexion : reset du backoff
-            if (isOffline) {
-                isOffline = false;
-                currentIntervalSeconds = REFRESH_INTERVAL_BASE;
-                refreshService.setPeriod(Duration.seconds(currentIntervalSeconds));
-                setOfflineBanner(false);
-            }
-        });
-        refreshService.setOnFailed(e -> {
-            Throwable ex = e.getSource().getException();
-            String msg = ex != null ? ex.getMessage() : "inconnue";
-            jobsStatusLabel.setText("Orchestrateur inaccessible : " + msg);
-            // Backoff exponentiel
-            isOffline = true;
-            currentIntervalSeconds = Math.min(currentIntervalSeconds * 2, REFRESH_INTERVAL_MAX);
-            refreshService.setPeriod(Duration.seconds(currentIntervalSeconds));
-            setOfflineBanner(true);
-        });
-        refreshService.start();
-    }
-
-    private void setOfflineBanner(boolean visible) {
-        if (offlineBanner != null) {
-            offlineBanner.setVisible(visible);
-            offlineBanner.setManaged(visible);
-        }
-    }
-
-    private void updateFilter() {
-        String search = jobSearchField != null ? jobSearchField.getText().toLowerCase().trim() : "";
-        String stateFilter = jobStateFilter != null ? jobStateFilter.getValue() : "Tous";
-
-        filteredRows.setPredicate(row -> {
-            boolean matchSearch = search.isEmpty()
-                    || row.getJobKey().toLowerCase().contains(search)
-                    || row.getInputName().toLowerCase().contains(search);
-            boolean matchState = "Tous".equals(stateFilter)
-                    || row.getState().equalsIgnoreCase(stateFilter);
-            return matchSearch && matchState;
-        });
-    }
-
-    private void showDetail(JobRow row) {
-        if (row == null) {
-            clearDetail();
-            return;
-        }
-        if (detailJobKey != null) detailJobKey.setText(row.getJobKey());
-        if (detailState != null) detailState.setText(row.getState());
-        if (detailStage != null) detailStage.setText(row.getStage());
-        if (detailAttempt != null) detailAttempt.setText(row.getAttempt());
-        if (detailUpdatedAt != null) detailUpdatedAt.setText(row.getUpdatedAt());
-        if (detailInputName != null) detailInputName.setText(row.getInputName());
-        if (detailOutPdf != null) detailOutPdf.setText(row.getOutPdf());
-        if (detailError != null) detailError.setText(row.getErrorMessage());
-    }
-
-    private void clearDetail() {
-        Label[] labels = { detailJobKey, detailState, detailStage, detailAttempt,
-                           detailUpdatedAt, detailInputName, detailOutPdf, detailError };
-        for (Label l : labels) {
-            if (l != null) l.setText("");
-        }
-    }
-
-    private void updateTable(List<JobRow> freshRows) {
-        Platform.runLater(() -> {
-            Map<String, JobRow> existing = rows.stream()
-                    .collect(Collectors.toMap(JobRow::getJobKey, r -> r));
-            for (JobRow fresh : freshRows) {
-                JobRow cur = existing.remove(fresh.getJobKey());
-                if (cur != null) {
-                    cur.updateFrom(fresh);
-                } else {
-                    rows.add(fresh);
-                }
-            }
-            rows.removeIf(r -> freshRows.stream()
-                    .noneMatch(f -> f.getJobKey().equals(r.getJobKey())));
-        });
-    }
-
-    private static void copyToClipboard(String text) {
-        ClipboardContent content = new ClipboardContent();
-        content.putString(text);
-        Clipboard.getSystemClipboard().setContent(content);
-    }
-
-    private static String abbreviate(String s, int maxLen) {
-        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
     }
 }
