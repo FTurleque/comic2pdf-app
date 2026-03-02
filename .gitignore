@@ -56,3 +56,10 @@ Thumbs.db
 ehthumbs.db
 desktop.ini
 *.lnk
+
+# =============================================================================
+# Python coverage — outputs par service (stricts, complément des globaux **)
+# =============================================================================
+services/**/coverage.xml
+services/**/htmlcov/
+services/**/.coverage
