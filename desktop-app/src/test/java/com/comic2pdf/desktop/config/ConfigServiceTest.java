@@ -31,6 +31,7 @@ class ConfigServiceTest {
         assertEquals(1, cfg.getOcrConcurrency());
         assertEquals(600, cfg.getJobTimeoutSeconds());
         assertEquals("fra+eng", cfg.getDefaultOcrLang());
+        assertEquals("", cfg.getApiKey(), "apiKey doit être vide par défaut");
     }
 
     @Test
@@ -45,6 +46,7 @@ class ConfigServiceTest {
         original.setOcrConcurrency(2);
         original.setJobTimeoutSeconds(1200);
         original.setDefaultOcrLang("eng");
+        original.setApiKey("super-secret-key");
 
         svc.save(original);
         AppConfig loaded = svc.load();
@@ -54,6 +56,7 @@ class ConfigServiceTest {
         assertEquals(2, loaded.getOcrConcurrency());
         assertEquals(1200, loaded.getJobTimeoutSeconds());
         assertEquals("eng", loaded.getDefaultOcrLang());
+        assertEquals("super-secret-key", loaded.getApiKey(), "apiKey doit être persistée");
     }
 
     @Test
@@ -88,6 +91,7 @@ class ConfigServiceTest {
         cfg.setOcrConcurrency(2);
         cfg.setJobTimeoutSeconds(900);
         cfg.setDefaultOcrLang("fra");
+        cfg.setApiKey("ma-cle");
 
         Map<String, Object> payload = cfg.toOrchPayload();
 
@@ -97,6 +101,41 @@ class ConfigServiceTest {
         assertTrue(payload.containsKey("default_ocr_lang"));
         assertEquals(3, payload.get("prep_concurrency"));
         assertEquals("fra", payload.get("default_ocr_lang"));
+        assertFalse(payload.containsKey("apiKey"),
+                "apiKey ne doit PAS être dans le payload orchestrateur");
+        assertFalse(payload.containsKey("api_key"),
+                "api_key ne doit PAS être dans le payload orchestrateur");
+    }
+
+    @Test
+    @DisplayName("load() retourne apiKey vide si config.json ne contient pas ce champ")
+    void load_apiKeyVide_siChampAbsent(@TempDir Path tmpDir) throws IOException {
+        Path cfgPath = tmpDir.resolve("config.json");
+        // JSON sans le champ apiKey (config ancienne)
+        java.nio.file.Files.writeString(cfgPath,
+                "{\"orchestratorUrl\":\"http://localhost:8080\",\"prepConcurrency\":2," +
+                "\"ocrConcurrency\":1,\"jobTimeoutSeconds\":600,\"defaultOcrLang\":\"fra+eng\"}");
+        ConfigService svc = new ConfigService(new ObjectMapper(), cfgPath);
+
+        AppConfig cfg = svc.load();
+
+        assertEquals("", cfg.getApiKey(), "apiKey doit être vide si absent dans config.json");
+    }
+
+    @Test
+    @DisplayName("setApiKey(null) stocke une chaîne vide, pas null")
+    void setApiKey_null_stockeVidePasNull() {
+        AppConfig cfg = new AppConfig();
+        cfg.setApiKey(null);
+        assertNotNull(cfg.getApiKey());
+        assertEquals("", cfg.getApiKey());
+    }
+
+    @Test
+    @DisplayName("getConfigPath() retourne le chemin fourni au constructeur")
+    void getConfigPath_retourneCheminFourni(@TempDir Path tmpDir) {
+        Path cfgPath = tmpDir.resolve("my-config.json");
+        ConfigService svc = new ConfigService(new ObjectMapper(), cfgPath);
+        assertEquals(cfgPath, svc.getConfigPath());
     }
 }
-

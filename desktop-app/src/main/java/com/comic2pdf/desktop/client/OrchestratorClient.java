@@ -19,6 +19,11 @@ import java.util.Optional;
  *
  * <p>Utilise {@code java.net.http.HttpClient} (Java 11+, stdlib — aucune dépendance Maven).</p>
  * <p>URL configurable via {@code ORCHESTRATOR_URL} (env) ou constructeur explicite.</p>
+ *
+ * <h2>Authentification</h2>
+ * <p>Si une clé API est configurée (via {@link #setApiKey(String)}), elle est transmise
+ * dans le header {@code X-Api-Key} sur <b>tous</b> les appels (GET et POST).
+ * La clé n'est jamais loguée.</p>
  */
 public class OrchestratorClient {
 
@@ -26,9 +31,19 @@ public class OrchestratorClient {
     private static final String DEFAULT_URL = "http://localhost:8080";
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
+    /** Nom du header d'authentification attendu par l'orchestrateur. */
+    private static final String HEADER_API_KEY = "X-Api-Key";
+
     private final HttpClient httpClient;
     private final ObjectMapper mapper;
     private volatile String baseUrl;
+
+    /**
+     * Clé API courante (peut être vide).
+     * Volatile pour la visibilité thread-safe en lecture (pas de synchronisation lourde requise).
+     * Ne jamais logger cette valeur.
+     */
+    private volatile String apiKey = "";
 
     /**
      * Construit un client en lisant {@code ORCHESTRATOR_URL} depuis l'environnement,
@@ -64,6 +79,27 @@ public class OrchestratorClient {
 
     /** @return URL de base courante. */
     public String getBaseUrl() { return baseUrl; }
+
+    /**
+     * Définit la clé API à utiliser pour l'authentification.
+     * Une chaîne vide ou {@code null} désactive l'envoi du header.
+     *
+     * <p><b>Sécurité</b> : ne jamais logger la valeur de ce paramètre.</p>
+     *
+     * @param apiKey Clé API ou chaîne vide pour désactiver l'authentification.
+     */
+    public void setApiKey(String apiKey) {
+        this.apiKey = (apiKey != null) ? apiKey : "";
+    }
+
+    /**
+     * Indique si une clé API est actuellement configurée.
+     *
+     * @return {@code true} si la clé est non vide.
+     */
+    public boolean hasApiKey() {
+        return !apiKey.isBlank();
+    }
 
     // -----------------------------------------------------------------------
     // Endpoints
@@ -120,6 +156,7 @@ public class OrchestratorClient {
 
     /**
      * Envoie une nouvelle configuration à l'orchestrateur via {@code POST /config}.
+     * Le header {@code X-Api-Key} est inclus automatiquement si une clé est configurée.
      *
      * @param config Configuration à appliquer.
      * @return {@code true} si l'envoi a réussi (HTTP 200), {@code false} sinon.
@@ -139,12 +176,13 @@ public class OrchestratorClient {
     // -----------------------------------------------------------------------
 
     private String get(String path) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
                 .timeout(TIMEOUT)
-                .GET()
-                .build();
-        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                .GET();
+        injectApiKeyHeader(builder);
+        HttpResponse<String> resp = httpClient.send(builder.build(),
+                HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() == 404) {
             throw new RuntimeException("404 Not Found: " + path);
         }
@@ -155,17 +193,30 @@ public class OrchestratorClient {
     }
 
     private String post(String path, String jsonBody) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
                 .timeout(TIMEOUT)
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
-        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody));
+        injectApiKeyHeader(builder);
+        HttpResponse<String> resp = httpClient.send(builder.build(),
+                HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             throw new RuntimeException("HTTP " + resp.statusCode() + " pour POST " + path);
         }
         return resp.body();
+    }
+
+    /**
+     * Injecte le header {@code X-Api-Key} si une clé est configurée.
+     * Ne logue jamais la valeur de la clé.
+     *
+     * @param builder Constructeur de requête HTTP en cours.
+     */
+    private void injectApiKeyHeader(HttpRequest.Builder builder) {
+        if (!apiKey.isBlank()) {
+            builder.header(HEADER_API_KEY, apiKey);
+        }
     }
 
     private JobRow parseJobRow(JsonNode node) {
@@ -175,7 +226,9 @@ public class OrchestratorClient {
                 node.path("stage").asText(""),
                 String.valueOf(node.path("attempt").asInt(0)),
                 node.path("updatedAt").asText(""),
-                node.path("inputName").asText("")
+                node.path("inputName").asText(""),
+                node.path("outPdf").asText(""),
+                node.path("errorMessage").asText("")
         );
     }
 }

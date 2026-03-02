@@ -70,22 +70,35 @@
       <!--
         Surefire 3.x — JUnit 5.
         Par défaut : exclut le tag "ui" uniquement.
-        mvn test => ConfigServiceTest, DuplicateServiceTest, OrchestratorClientTest s'exécutent normalement.
-        mvn test => les tests @Tag("ui") sont EXCLUS.
       -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.3.1</version>
         <configuration>
-          <!--
-            Exclut UNIQUEMENT le tag JUnit 5 "ui".
-            excludedGroups = alias JUnit Platform pour @Tag (Surefire 3.x).
-            mvn test => ConfigServiceTest, DuplicateServiceTest, OrchestratorClientTest passent.
-            mvn test => tests @Tag("ui") sont EXCLUS.
-          -->
           <excludedGroups>ui</excludedGroups>
         </configuration>
+      </plugin>
+      <!--
+        JaCoCo — couverture de tests.
+        Rapport généré dans target/site/jacoco/ après mvn test.
+        Désactivé pour les tests @Tag("ui") (TestFX headless fragile en CI).
+      -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.12</version>
+        <executions>
+          <execution>
+            <id>jacoco-prepare-agent</id>
+            <goals><goal>prepare-agent</goal></goals>
+          </execution>
+          <execution>
+            <id>jacoco-report</id>
+            <phase>test</phase>
+            <goals><goal>report</goal></goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

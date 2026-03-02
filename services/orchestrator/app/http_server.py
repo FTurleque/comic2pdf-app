@@ -4,12 +4,23 @@ Endpoints :
   GET  /metrics            -> JSON métriques
   GET  /jobs               -> JSON liste des jobs (depuis index)
   GET  /jobs/{jobKey}      -> JSON state.json du job (404 si absent)
-  POST /config             -> met à jour la config runtime (thread-safe)
+  POST /config             -> met à jour la config runtime (thread-safe) — PROTÉGÉ par X-Api-Key
   GET  /config             -> JSON config courante
+
+Auth :
+  POST /config est protégé par le header X-Api-Key.
+  Règle (lue à chaque requête depuis l'env var ORCHESTRATOR_API_KEY) :
+    - Clé configurée → header requis + comparaison constant-time (hmac.compare_digest).
+      Mauvaise clé → 401. Header absent → 401.
+    - Clé non configurée → accepter uniquement depuis localhost (127.0.0.1 / ::1).
+      Autre IP → 403.
+  Les GET restent ouverts (read-only / monitoring).
+  Audit log : IP + résultat (sans jamais logger la valeur de la clé).
 
 Démarrage en thread daemon via start_http_server().
 """
 import copy
+import hmac
 import json
 import os
 import threading
@@ -17,7 +28,17 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 from urllib.parse import urlparse
 
-from app.utils import read_json
+from app.utils import read_json, safe_path
+from app.logger import get_logger
+
+_log = get_logger("orchestrator.http")
+
+# ---------------------------------------------------------------------------
+# Constantes
+# ---------------------------------------------------------------------------
+
+_ENV_API_KEY = "ORCHESTRATOR_API_KEY"
+_LOCALHOST_IPS = {"127.0.0.1", "::1", "0:0:0:0:0:0:0:1"}
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +97,7 @@ class OrchestratorState:
                     "updatedAt": entry.get("updatedAt", ""),
                     "inputName": entry.get("inputName", ""),
                     "outPdf": entry.get("outPdf"),
+                    "errorMessage": entry.get("message", ""),
                 })
         return jobs
 
@@ -86,7 +108,10 @@ class OrchestratorState:
         :param job_key: Identifiant du job.
         :return: Dict du state.json ou None si absent.
         """
-        state_path = os.path.join(self._work_dir, job_key, "state.json")
+        try:
+            state_path = safe_path(self._work_dir, os.path.join(self._work_dir, job_key, "state.json"))
+        except ValueError:
+            return None
         with self._lock:
             return read_json(state_path)
 
@@ -145,6 +170,53 @@ class _OrchestratorHandler(BaseHTTPRequestHandler):
     def _send_error_json(self, code: int, message: str) -> None:
         self._send_json(code, {"error": message, "status": code})
 
+    def _get_client_ip(self) -> str:
+        """Retourne l'IP du client (supporte les proxies via X-Forwarded-For)."""
+        xff = self.headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[0].strip()
+        return self.client_address[0] if self.client_address else "unknown"
+
+    def _check_api_key(self) -> bool:
+        """
+        Vérifie l'authentification pour les endpoints sensibles (POST /config).
+
+        Règle :
+          - ORCHESTRATOR_API_KEY définie → comparer X-Api-Key via hmac.compare_digest.
+            Retourne True si ok, False sinon (401 envoyé).
+          - ORCHESTRATOR_API_KEY non définie → accepter localhost uniquement.
+            Retourne True si localhost, False sinon (403 envoyé).
+
+        Audit log : IP + résultat. La valeur de la clé n'est JAMAIS loguée.
+
+        :return: True si la requête est autorisée, False si refusée (réponse déjà envoyée).
+        """
+        client_ip = self._get_client_ip()
+        expected_key = os.environ.get(_ENV_API_KEY, "")
+
+        if expected_key:
+            # Clé configurée : vérification du header
+            provided_key = self.headers.get("X-Api-Key", "")
+            ok = bool(provided_key) and hmac.compare_digest(
+                provided_key.encode("utf-8"),
+                expected_key.encode("utf-8"),
+            )
+            if ok:
+                _log.info(f"[AUDIT] POST /config ACCEPTED ip={client_ip}")
+            else:
+                _log.warning(f"[AUDIT] POST /config REFUSED ip={client_ip} reason=invalid_key")
+                self._send_error_json(401, "Authentification requise : header X-Api-Key manquant ou incorrect")
+            return ok
+        else:
+            # Pas de clé configurée : accepter uniquement localhost
+            is_local = client_ip in _LOCALHOST_IPS
+            if is_local:
+                _log.info(f"[AUDIT] POST /config ACCEPTED ip={client_ip} (no-key localhost)")
+            else:
+                _log.warning(f"[AUDIT] POST /config REFUSED ip={client_ip} reason=no_key_non_local")
+                self._send_error_json(403, "POST /config non autorisé depuis une IP non-locale (configurez ORCHESTRATOR_API_KEY)")
+            return is_local
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
@@ -177,6 +249,9 @@ class _OrchestratorHandler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
 
         if path == "/config":
+            # Auth obligatoire sur POST /config
+            if not self._check_api_key():
+                return
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(length)

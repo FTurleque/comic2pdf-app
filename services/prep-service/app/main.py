@@ -10,7 +10,7 @@ import time
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from app.core import get_tool_versions, list_and_sort_images, images_to_pdf
+from app.core import get_tool_versions, list_and_sort_images, images_to_pdf, ZipSlipError
 from app.utils import ensure_dir, atomic_write_json, read_json, now_iso
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
@@ -181,6 +181,19 @@ def run_job(job_meta_path: str):
                 "message": "raw.pdf ready",
                 "artifacts": {"rawPdf": raw_pdf},
             })
+        except ZipSlipError as e:
+            # Zip-slip détecté : nettoyer le workdir pour ne laisser aucun artefact dangereux
+            import shutil as _sh_sec
+            try:
+                _sh_sec.rmtree(job_dir, ignore_errors=True)
+            except Exception:
+                pass
+            update_state(job_meta_path, {
+                "state": "ERROR",
+                "message": f"zip-slip attack detected: {e}",
+                "error": {"type": "ZipSlipError", "detail": str(e)},
+            })
+            raise
         except Exception as e:
             update_state(job_meta_path, {
                 "state": "ERROR",

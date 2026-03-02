@@ -16,6 +16,50 @@ _PARASITES = {"thumbs.db", ".ds_store", "desktop.ini"}
 _PARASITE_DIRS = {"__macosx"}
 
 
+# ---------------------------------------------------------------------------
+# Sécurité — protection zip-slip post-extraction
+# ---------------------------------------------------------------------------
+
+class ZipSlipError(Exception):
+    """
+    Levée lorsqu'un fichier extrait sort du répertoire ``pages/`` attendu.
+    Indique une tentative d'attaque zip-slip (path traversal via archive malveillante).
+    """
+
+
+def check_zip_slip(pages_dir: str, images: List[str]) -> List[str]:
+    """
+    Vérifie que tous les chemins de ``images`` restent bien sous ``pages_dir``
+    après résolution de chemin (protection zip-slip post-extraction).
+
+    L'extraction est faite par 7z (subprocess) qui peut décompresser des archives
+    malveillantes contenant des chemins traversants comme ``../../etc/crontab``.
+    Cette vérification post-extraction est la ligne de défense principale.
+
+    :param pages_dir: Répertoire d'extraction attendu (chemin canonique cible).
+    :param images: Liste de chemins d'images retournés par ``filter_images()``.
+    :return: Sous-liste des chemins strictement sous ``pages_dir``.
+    :raises ZipSlipError: Si au moins un chemin sort de ``pages_dir``.
+    """
+    real_base = os.path.realpath(os.path.abspath(pages_dir))
+    safe_images = []
+    unsafe = []
+
+    for path in images:
+        real_path = os.path.realpath(os.path.abspath(path))
+        if real_path.startswith(real_base + os.sep) or real_path == real_base:
+            safe_images.append(path)
+        else:
+            unsafe.append(path)
+
+    if unsafe:
+        raise ZipSlipError(
+            f"Zip-slip détecté : {len(unsafe)} fichier(s) hors de '{pages_dir}' — "
+            f"exemple : '{unsafe[0]}'"
+        )
+    return safe_images
+
+
 def filter_images(root: str) -> List[str]:
     """
     Retourne la liste des fichiers images valides sous ``root``, récursivement.
@@ -54,11 +98,15 @@ def sort_images(paths: List[str]) -> List[str]:
 def list_and_sort_images(root: str) -> List[str]:
     """
     Combine ``filter_images`` et ``sort_images`` : filtre puis trie.
+    Inclut une vérification zip-slip : lève ``ZipSlipError`` si un fichier
+    extrait sort du répertoire ``root`` (protection contre les archives malveillantes).
 
-    :param root: Chemin du dossier racine.
-    :return: Liste triée de chemins d'images valides.
+    :param root: Chemin du dossier racine (pages_dir après extraction 7z).
+    :return: Liste triée de chemins d'images valides, tous sous ``root``.
+    :raises ZipSlipError: Si un chemin sort de ``root`` après résolution.
     """
-    return sort_images(filter_images(root))
+    images = sort_images(filter_images(root))
+    return check_zip_slip(root, images)
 
 
 def images_to_pdf(images: List[str], dest_path: str) -> None:
