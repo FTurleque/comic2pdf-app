@@ -6,7 +6,7 @@ import javafx.beans.property.StringProperty;
 /**
  * Modèle JavaFX représentant une ligne de la vue "Jobs" (état d'un job de l'orchestrateur).
  *
- * <p>Champs : jobKey, state, stage, attempt, updatedAt, inputName.</p>
+ * <p>Champs : jobKey, state, stage, attempt, updatedAt, inputName, outPdf, errorMessage.</p>
  */
 public class JobRow {
 
@@ -16,25 +16,47 @@ public class JobRow {
     private final StringProperty attempt = new SimpleStringProperty();
     private final StringProperty updatedAt = new SimpleStringProperty();
     private final StringProperty inputName = new SimpleStringProperty();
+    private final StringProperty outPdf = new SimpleStringProperty();
+    private final StringProperty errorMessage = new SimpleStringProperty();
 
     /**
-     * Construit un {@code JobRow} avec tous les champs.
+     * Construit un {@code JobRow} avec tous les champs (compatibilité ascendante).
      *
-     * @param jobKey    Clé unique du job.
-     * @param state     État global (DONE, ERROR, PREP_RUNNING, etc.).
-     * @param stage     Étape en cours (peut être vide).
-     * @param attempt   Numéro de tentative courante.
-     * @param updatedAt Horodatage ISO de dernière mise à jour.
-     * @param inputName Nom du fichier d'entrée.
+     * @param jobKey       Clé unique du job.
+     * @param state        État global (DONE, ERROR, PREP_RUNNING, etc.).
+     * @param stage        Étape en cours (peut être vide).
+     * @param attempt      Numéro de tentative courante.
+     * @param updatedAt    Horodatage ISO de dernière mise à jour.
+     * @param inputName    Nom du fichier d'entrée.
      */
     public JobRow(String jobKey, String state, String stage,
                   String attempt, String updatedAt, String inputName) {
+        this(jobKey, state, stage, attempt, updatedAt, inputName, "", "");
+    }
+
+    /**
+     * Construit un {@code JobRow} avec tous les champs enrichis.
+     *
+     * @param jobKey       Clé unique du job.
+     * @param state        État global (DONE, ERROR, PREP_RUNNING, etc.).
+     * @param stage        Étape en cours (peut être vide).
+     * @param attempt      Numéro de tentative courante.
+     * @param updatedAt    Horodatage ISO de dernière mise à jour.
+     * @param inputName    Nom du fichier d'entrée.
+     * @param outPdf       Chemin du PDF de sortie (vide si pas encore généré).
+     * @param errorMessage Message d'erreur (vide si pas en erreur).
+     */
+    public JobRow(String jobKey, String state, String stage,
+                  String attempt, String updatedAt, String inputName,
+                  String outPdf, String errorMessage) {
         this.jobKey.set(jobKey);
         this.state.set(state);
         this.stage.set(stage);
         this.attempt.set(attempt);
         this.updatedAt.set(updatedAt);
         this.inputName.set(inputName);
+        this.outPdf.set(outPdf != null ? outPdf : "");
+        this.errorMessage.set(errorMessage != null ? errorMessage : "");
     }
 
     /** @return jobKey du job. */
@@ -67,6 +89,16 @@ public class JobRow {
     /** @return Propriété JavaFX inputName. */
     public StringProperty inputNameProperty() { return inputName; }
 
+    /** @return Chemin du PDF de sortie, ou chaîne vide si absent. */
+    public String getOutPdf() { return outPdf.get(); }
+    /** @return Propriété JavaFX outPdf. */
+    public StringProperty outPdfProperty() { return outPdf; }
+
+    /** @return Message d'erreur, ou chaîne vide si pas en erreur. */
+    public String getErrorMessage() { return errorMessage.get(); }
+    /** @return Propriété JavaFX errorMessage. */
+    public StringProperty errorMessageProperty() { return errorMessage; }
+
     /**
      * Met à jour tous les champs depuis un autre {@code JobRow}.
      * Permet le refresh périodique sans recréer les lignes.
@@ -79,6 +111,8 @@ public class JobRow {
         this.attempt.set(other.getAttempt());
         this.updatedAt.set(other.getUpdatedAt());
         this.inputName.set(other.getInputName());
+        this.outPdf.set(other.getOutPdf());
+        this.errorMessage.set(other.getErrorMessage());
     }
 }
 

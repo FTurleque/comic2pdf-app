@@ -4,6 +4,8 @@
       <env name="ORCHESTRATOR_URL" value="http://localhost:18083" />
     </envs>
     <option name="MAIN_CLASS_NAME" value="com.comic2pdf.desktop.MainApp" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/desktop-app" />
+    <option name="VM_PARAMETERS" value="--add-modules=javafx.controls,javafx.fxml" />
     <module name="desktop-app" />
     <method v="2">
       <option name="Make" enabled="true" />

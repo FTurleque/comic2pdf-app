@@ -15,13 +15,6 @@
             </list>
           </option>
           <option name="pomFileName" value="pom.xml" />
-          <option name="profilesMap">
-            <map />
-          </option>
-          <option name="projectsCmdOptionValues">
-            <list />
-          </option>
-          <option name="resolveToWorkspace" value="false" />
           <option name="workingDirPath" value="$PROJECT_DIR$/desktop-app" />
         </MavenRunnerParameters>
       </option>
@@ -32,4 +25,3 @@
     <method v="2" />
   </configuration>
 </component>
-

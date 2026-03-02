@@ -1,6 +1,31 @@
 import os, json, time, hashlib, re, shutil
 from typing import Any, Dict, Optional, List, Set
 
+
+# ---------------------------------------------------------------------------
+# Sécurité — protection path traversal
+# ---------------------------------------------------------------------------
+
+def safe_path(base_dir: str, user_path: str) -> str:
+    """
+    Vérifie que ``user_path`` est bien contenu dans ``base_dir`` après résolution.
+    Protège contre les attaques de type path traversal (ex: ``../../etc/passwd``).
+
+    :param base_dir: Répertoire de base autorisé (chemin absolu ou relatif).
+    :param user_path: Chemin fourni par l'utilisateur ou calculé dynamiquement.
+    :return: Chemin absolu normalisé si la vérification passe.
+    :raises ValueError: Si ``user_path`` sort de ``base_dir`` après résolution.
+    """
+    real_base = os.path.realpath(os.path.abspath(base_dir))
+    real_path = os.path.realpath(os.path.abspath(user_path))
+    # Le chemin doit commencer par base_dir + séparateur (ou être base_dir lui-même)
+    if real_path != real_base and not real_path.startswith(real_base + os.sep):
+        raise ValueError(
+            f"Path traversal détecté : '{user_path}' sort de '{base_dir}'"
+        )
+    return real_path
+
+
 # ---------------------------------------------------------------------------
 # Fonctions existantes (inchangées)
 # ---------------------------------------------------------------------------

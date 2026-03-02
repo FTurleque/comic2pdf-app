@@ -1,6 +1,7 @@
 package com.comic2pdf.desktop.service;
 
 import com.comic2pdf.desktop.client.OrchestratorClient;
+import com.comic2pdf.desktop.config.AppConfig;
 import com.comic2pdf.desktop.config.ConfigService;
 import com.comic2pdf.desktop.service.DuplicateService;
 
@@ -48,8 +49,13 @@ public class AppServices {
     /**
      * Crée un conteneur avec les valeurs par défaut pour la production.
      *
-     * <p>Lit {@code ORCHESTRATOR_URL} depuis l'environnement ;
-     * utilise {@code http://localhost:8080} si absent ou vide.</p>
+     * <p>Séquence d'initialisation :</p>
+     * <ol>
+     *   <li>Résolution de l'URL orchestrateur depuis {@code ORCHESTRATOR_URL} ou défaut.</li>
+     *   <li>Chargement de la config locale via {@link ConfigService#load()} —
+     *       la clé API est déjà résolue (env var prioritaire sur config.json).</li>
+     *   <li>Injection de la clé API dans {@link OrchestratorClient#setApiKey(String)}.</li>
+     * </ol>
      *
      * @return Nouvelle instance {@code AppServices} prête à l'emploi.
      */
@@ -57,10 +63,27 @@ public class AppServices {
         String url = Optional.ofNullable(System.getenv(ENV_URL))
                 .filter(s -> !s.isBlank())
                 .orElse(DEFAULT_URL);
+
+        ConfigService configService = new ConfigService();
+        AppConfig cfg = configService.load();
+
+        // Utiliser l'URL depuis la config si elle y est stockée et non vide
+        String resolvedUrl = (cfg.getOrchestratorUrl() != null && !cfg.getOrchestratorUrl().isBlank())
+                ? cfg.getOrchestratorUrl()
+                : url;
+        // Mais env var ORCHESTRATOR_URL reste prioritaire sur config.json
+        if (System.getenv(ENV_URL) != null && !System.getenv(ENV_URL).isBlank()) {
+            resolvedUrl = url;
+        }
+
+        OrchestratorClient client = new OrchestratorClient(resolvedUrl);
+        // Injecter la clé API résolue (env var déjà prioritaire via ConfigService.load())
+        client.setApiKey(cfg.getApiKey());
+
         return new AppServices(
-                new OrchestratorClient(url),
+                client,
                 new DuplicateService(),
-                new ConfigService(),
+                configService,
                 Paths.get("..", "data").normalize().toString()
         );
     }

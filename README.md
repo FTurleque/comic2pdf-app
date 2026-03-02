@@ -247,15 +247,121 @@ L'interface est désormais organisée en **3 onglets** :
 
 | Onglet | Fonctionnalité |
 |---|---|
-| **Doublons** | Vue existante : décisions USE_EXISTING_RESULT / DISCARD / FORCE_REPROCESS |
-| **Jobs** | Suivi temps-réel (refresh auto 3s) avec état, étape, tentative. Bouton "Ouvrir out/" |
-| **Configuration** | PREP_CONCURRENCY, OCR_CONCURRENCY, timeout, langue OCR. Persistance locale + POST /config |
+| **Doublons** | Décisions USE_EXISTING_RESULT / DISCARD / FORCE_REPROCESS avec détail incoming vs existing |
+| **Jobs** | Suivi temps-réel (refresh auto 3s + backoff) avec recherche, filtres état, panneau détail, actions copier/ouvrir |
+| **Configuration** | PREP_CONCURRENCY, OCR_CONCURRENCY, timeout, langue OCR, clé API. Persistance locale + POST /config |
 
 ### URL orchestrateur
 
 Configurable via :
 1. Variable d'env `ORCHESTRATOR_URL` (défaut `http://localhost:8080`)
-2. Champ "URL orchestrateur" dans l'onglet Configuration (persisté dans `%APPDATA%\comic2pdf\config.json`)
+2. Champ "URL orchestrateur" dans l'onglet Configuration (persisté dans le fichier config utilisateur)
+
+---
+
+## 10) Sécurité
+
+### Authentification `POST /config`
+
+L'endpoint `POST /config` de l'orchestrateur est protégé par un token API.
+
+**Règle de comportement :**
+- `ORCHESTRATOR_API_KEY` définie → header `X-Api-Key` requis sur `POST /config` (comparaison constant-time)
+  - Mauvaise clé ou header absent → `401 Unauthorized`
+- `ORCHESTRATOR_API_KEY` non définie → `POST /config` accepté uniquement depuis `127.0.0.1` / `::1`
+  - Autre IP → `403 Forbidden`
+- `GET /jobs`, `GET /config`, `GET /metrics` restent **sans authentification** (lecture seule)
+
+**Configuration :**
+
+```bash
+# Docker Compose — ajouter dans la section environment de l'orchestrateur
+ORCHESTRATOR_API_KEY=votre-cle-secrete-longue
+```
+
+```powershell
+# Desktop — Variable d'environnement (prioritaire)
+$env:ORCHESTRATOR_API_KEY = "votre-cle-secrete-longue"
+mvn javafx:run
+```
+
+Ou via l'onglet **Configuration** de l'app desktop (champ "Clé API", masqué).
+
+### Stockage de la clé API côté desktop
+
+Priorité de résolution (option A > option B) :
+
+| Priorité | Source | Notes |
+|---|---|---|
+| **A** | Env var `ORCHESTRATOR_API_KEY` | Toujours prioritaire. Champ UI désactivé si active. |
+| **B** | Champ "Clé API" dans l'onglet Config | Persisté dans le fichier config utilisateur ci-dessous. |
+
+**Emplacement du fichier config utilisateur :**
+
+| OS | Chemin |
+|---|---|
+| Windows | `%APPDATA%\comic2pdf\config.json` |
+| Linux/macOS | `${XDG_CONFIG_HOME:-~/.config}/comic2pdf/config.json` |
+
+Sur Unix, le fichier est créé avec les permissions `600` (rw-------) automatiquement.
+Sur Windows, la sécurité repose sur les ACL du dossier `%APPDATA%` (restreint à l'utilisateur courant).
+
+> **Important** : ne jamais committer ce fichier (`config.json` est ignoré par `.gitignore`).
+
+### Protection Zip-Slip (prep-service)
+
+Après extraction via 7z, tous les chemins d'images sont vérifiés via `realpath` pour
+s'assurer qu'ils restent sous le dossier `pages/`. Toute tentative de zip-slip provoque :
+- Suppression du workdir entier
+- Job mis en état `ERROR` avec message explicite
+- Aucun `raw.pdf` produit
+
+---
+
+## 11) CI GitHub Actions
+
+### Workflow principal (`ci.yml`)
+
+Déclenché sur `push` et `pull_request` vers `main` :
+
+| Job | Description |
+|---|---|
+| `python-tests` | pytest + couverture (coverage.xml) pour chaque service Python |
+| `python-audit` | pip-audit sur les dépendances de production |
+| `java-tests` | mvn test + rapport JaCoCo |
+| `java-audit` | OWASP Dependency-Check (sur `main` uniquement ou label `run-audit`) |
+
+### Workflow E2E (`e2e.yml`)
+
+Déclenché **uniquement** par :
+- `workflow_dispatch` (bouton GitHub Actions)
+- Label PR `run-e2e`
+
+Scénario : `docker compose up -d` → déposer un CBZ → attendre PDF dans `data/out/` → vérifier.
+
+**Commandes locales équivalentes :**
+
+```bash
+# Linux/macOS
+docker compose up -d --build
+python tests/e2e/test_pipeline_e2e.py
+docker compose down
+```
+
+```powershell
+# Windows PowerShell
+docker compose up -d --build
+python tests/e2e/test_pipeline_e2e.py
+docker compose down
+```
+
+**Variables d'environnement E2E :**
+
+| Variable | Défaut | Description |
+|---|---|---|
+| `DATA_DIR` | `./data` | Chemin du dossier data/ |
+| `E2E_TIMEOUT` | `120` | Timeout en secondes |
+| `E2E_POLL_INTERVAL` | `2` | Intervalle de poll en secondes |
 
 ---
 

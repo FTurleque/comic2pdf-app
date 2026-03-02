@@ -39,6 +39,27 @@ public final class FxUtils {
     }
 
     /**
+     * Ouvre un fichier avec l'application par défaut du système.
+     * Silencieux si Desktop non supporté ou si le fichier est absent.
+     *
+     * @param file Chemin du fichier à ouvrir.
+     * @return {@code true} si l'ouverture a réussi, {@code false} sinon.
+     */
+    public static boolean openFile(Path file) {
+        if (file == null || !Files.exists(file)) return false;
+        try {
+            if (Desktop.isDesktopSupported()
+                    && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                Desktop.getDesktop().open(file.toFile());
+                return true;
+            }
+        } catch (IOException ignored) {
+            // Silencieux
+        }
+        return false;
+    }
+
+    /**
      * Affiche une alerte d'erreur JavaFX.
      *
      * @param titre   Titre de la fenêtre d'alerte.

@@ -1,0 +1,110 @@
+name: E2E — Pipeline CBZ→PDF (Docker)
+
+on:
+  # Déclenchement manuel uniquement
+  workflow_dispatch:
+    inputs:
+      timeout_seconds:
+        description: "Timeout d'attente du PDF (secondes)"
+        required: false
+        default: "120"
+
+  # OU si la PR porte le label 'run-e2e'
+  pull_request:
+    types: [labeled]
+
+jobs:
+  # Vérifier que le label 'run-e2e' est présent (skip sinon)
+  check-label:
+    name: Vérification label run-e2e
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+    steps:
+      - name: Vérifier le déclencheur
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ] && \
+               [ "${{ github.event.label.name }}" = "run-e2e" ]; then
+            echo "should-run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should-run=false" >> $GITHUB_OUTPUT
+          fi
+
+  e2e-pipeline:
+    name: "E2E CBZ→PDF (Docker Compose)"
+    runs-on: ubuntu-latest
+    needs: check-label
+    if: needs.check-label.outputs.should-run == 'true'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12 (pour le script E2E)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow (génération du CBZ de test)
+        run: pip install pillow
+
+      - name: Créer les dossiers data/
+        run: |
+          mkdir -p data/in data/out data/work data/error data/archive \
+                   data/hold/duplicates data/reports/duplicates data/index
+
+      - name: Démarrer la stack Docker
+        run: docker compose up -d --build
+        env:
+          ORCHESTRATOR_API_KEY: ""  # Pas de clé pour les tests E2E
+
+      - name: Attendre que les services soient prêts (30s max)
+        run: |
+          echo "Attente des services..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:18083/metrics > /dev/null 2>&1; then
+              echo "✅ Orchestrateur disponible après ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Lancer le test E2E
+        env:
+          E2E_TIMEOUT: ${{ github.event.inputs.timeout_seconds || '120' }}
+        run: python tests/e2e/test_pipeline_e2e.py
+
+      - name: Vérifier le PDF de sortie
+        run: |
+          count=$(ls data/out/*.pdf 2>/dev/null | wc -l)
+          echo "PDFs trouvés dans data/out/ : $count"
+          if [ "$count" -eq 0 ]; then
+            echo "❌ ECHEC : Aucun PDF trouvé dans data/out/"
+            exit 1
+          fi
+          echo "✅ SUCCÈS : $count PDF(s) trouvé(s)"
+          ls -lh data/out/
+
+      - name: Collecter les logs Docker (en cas d'échec)
+        if: failure()
+        run: |
+          echo "=== Logs orchestrator ===" && docker compose logs orchestrator || true
+          echo "=== Logs prep-service ===" && docker compose logs prep-service || true
+          echo "=== Logs ocr-service ===" && docker compose logs ocr-service || true
+
+      - name: Upload logs Docker en cas d'échec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs-e2e
+          path: /tmp/docker-logs/
+          retention-days: 7
+
+      - name: Arrêter la stack Docker
+        if: always()
+        run: docker compose down -v
+
