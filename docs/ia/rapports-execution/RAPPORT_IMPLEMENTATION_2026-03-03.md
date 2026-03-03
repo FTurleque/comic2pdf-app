@@ -1,5 +1,7 @@
 # RAPPORT_IMPLEMENTATION_2026-03-03
 
+Généré par IA: Copilot
+
 > **Généré par IA** — Outil/Agent : `GitHub Copilot`
 > **Auteur responsable** : `Assistant IA — Session 2026-03-03`
 

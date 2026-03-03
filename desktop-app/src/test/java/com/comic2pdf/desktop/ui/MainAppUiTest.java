@@ -9,8 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.testfx.util.WaitForAsyncUtils;
 import javafx.stage.Stage;
 
-import java.util.Optional;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 /**

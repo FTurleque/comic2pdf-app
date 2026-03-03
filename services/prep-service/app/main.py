@@ -234,7 +234,12 @@ _worker_threads = []
 @app.on_event("startup")
 def startup():
     """Démarre les workers au lancement du serveur FastAPI."""
+    # Requeue existing running jobs into the queue (policy: full recompute)
     requeue_running_on_startup()
+    # Respect DISABLE_WORKERS for test environments to avoid spawning background threads
+    if os.environ.get("DISABLE_WORKERS", "0") == "1":
+        # Workers disabled by environment (useful for tests)
+        return
     for _ in range(max(1, SERVICE_CONCURRENCY)):
         t = threading.Thread(target=worker_loop, args=(_stop_event,), daemon=True)
         t.start()
