@@ -6,11 +6,21 @@
     - Cree le venv si absent (py -3 ou python en fallback)
     - Installe les dependances dev (requirements-dev.txt)
     - Lance pytest avec rapport de couverture terminal + XML + HTML
+    - Impose un seuil minimal de couverture (PY_COV_MIN, défaut: 60%)
     Sorties : services/prep-service/coverage.xml
               services/prep-service/htmlcov/
+.PARAMETER CovMin
+    Seuil minimal de couverture (%). Défaut: 60 (env: PY_COV_MIN).
 .EXAMPLE
     .\scripts\test_prep.ps1
+    .\scripts\test_prep.ps1 -CovMin 65
+    $env:PY_COV_MIN=65; .\scripts\test_prep.ps1
 #>
+[CmdletBinding()]
+param(
+    [int]$CovMin = [int]($env:PY_COV_MIN -or 60)
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -37,12 +47,14 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     # --- Tests + couverture ---
-    Write-Host "  > pytest [prep-service]" -ForegroundColor Cyan
+    Write-Host "  > pytest [prep-service] (seuil couverture: $CovMin%)" -ForegroundColor Cyan
     & $py -m pytest -q --tb=short `
         --cov=app `
+        --cov-report=term `
         --cov-report=term-missing `
         "--cov-report=xml:coverage.xml" `
         "--cov-report=html:htmlcov" `
+        "--cov-fail-under=$CovMin" `
         tests
     exit $LASTEXITCODE
 }

@@ -130,7 +130,85 @@ jobs:
           retention-days: 14
 
   # ===========================================================================
-  # Job 4 : Audit sécurité Java (OWASP Dependency-Check)
+  # Job 4 : Tests UI JavaFX (TestFX headless avec xvfb)
+  # ===========================================================================
+  java-ui-tests:
+    name: Java UI tests (TestFX headless)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Install xvfb (virtual display)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run UI tests with xvfb (headless)
+        working-directory: desktop-app
+        run: |
+          xvfb-run -a mvn -q -Pui-tests test \
+            -Dtestfx.headless=true \
+            -Dprism.order=sw \
+            -Dprism.verbose=true
+        # Fallback si flakiness : ajouter -Dglass.platform=Monocle -Dmonocle.platform=Headless
+
+      - name: Upload UI test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-reports
+          path: desktop-app/target/surefire-reports/**
+          retention-days: 7
+
+      - name: Upload UI test screenshots (si échec)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-test-screenshots
+          path: desktop-app/target/test-screenshots/**
+          retention-days: 7
+
+      - name: Extract test metrics
+        if: always()
+        run: |
+          cd desktop-app/target/surefire-reports
+          python3 << 'EOF'
+          import xml.etree.ElementTree as ET
+          import glob
+          
+          total_time = 0
+          test_count = 0
+          failures = 0
+          
+          for xml_file in glob.glob('TEST-*.xml'):
+              try:
+                  tree = ET.parse(xml_file)
+                  root = tree.getroot()
+                  total_time += float(root.get('time', 0))
+                  test_count += int(root.get('tests', 0))
+                  failures += int(root.get('failures', 0)) + int(root.get('errors', 0))
+              except Exception as e:
+                  print(f"⚠ Erreur parsing {xml_file}: {e}")
+          
+          if test_count > 0:
+              avg_time = total_time / test_count
+              print(f"🧪 Tests UI : {test_count} tests en {total_time:.2f}s")
+              print(f"⏱️  Temps moyen : {avg_time:.2f}s par test")
+              print(f"✅ Succès : {test_count - failures}")
+              print(f"❌ Échecs : {failures}")
+          else:
+              print("⚠ Aucun test UI trouvé")
+          EOF
+
+  # ===========================================================================
+  # Job 5 : Audit sécurité Java (OWASP Dependency-Check)
   # ===========================================================================
   java-audit:
     name: Java OWASP Dependency-Check

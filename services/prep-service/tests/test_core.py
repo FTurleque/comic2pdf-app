@@ -167,3 +167,82 @@ class TestImagesToPdf:
         with pytest.raises(Exception):
             images_to_pdf([bad_file], dest)
 
+
+# ---------------------------------------------------------------------------
+# Tests get_tool_versions (edge cases)
+# ---------------------------------------------------------------------------
+
+class TestGetToolVersions:
+    """Tests des cas d'erreur pour get_tool_versions."""
+
+    def test_get_tool_versions_success(self, mocker):
+        """get_tool_versions retourne les versions quand les outils sont disponibles."""
+        from app.core import get_tool_versions
+
+        # Mock subprocess.run pour simuler des outils présents
+        mock_run = mocker.patch("app.core.subprocess.run")
+
+        def side_effect(cmd, **kwargs):
+            if "7z" in cmd:
+                return mocker.Mock(returncode=0, stdout="7-Zip 19.00\nCopyright...", stderr="")
+            elif "img2pdf" in cmd or ("python" in str(cmd[0]) if cmd else False):
+                return mocker.Mock(returncode=0, stdout="img2pdf 0.4.3\n", stderr="")
+            return mocker.Mock(returncode=1, stdout="", stderr="")
+
+        mock_run.side_effect = side_effect
+
+        versions = get_tool_versions()
+
+        assert "7z" in versions
+        assert "img2pdf" in versions
+
+    def test_get_tool_versions_7z_not_found(self, mocker):
+        """get_tool_versions retourne 'unknown' si 7z est absent."""
+        from app.core import get_tool_versions
+
+        # Mock subprocess.run pour FileNotFoundError sur 7z
+        def side_effect(cmd, **kwargs):
+            if "7z" in cmd:
+                raise FileNotFoundError("7z not found")
+            elif "img2pdf" in cmd or ("python" in str(cmd[0]) if cmd else False):
+                return mocker.Mock(returncode=0, stdout="img2pdf 0.4.3\n", stderr="")
+            return mocker.Mock(returncode=1, stdout="", stderr="")
+
+        mocker.patch("app.core.subprocess.run", side_effect=side_effect)
+
+        versions = get_tool_versions()
+
+        assert versions.get("7z") == "unknown"
+        assert "img2pdf" in versions
+
+    def test_get_tool_versions_img2pdf_not_found(self, mocker):
+        """get_tool_versions retourne 'unknown' si img2pdf est absent."""
+        from app.core import get_tool_versions
+
+        # Mock subprocess.run pour 7z OK
+        mocker.patch("app.core.subprocess.run",
+                    return_value=mocker.Mock(returncode=0, stdout="7-Zip 19.00\n", stderr=""))
+
+        # Mock img2pdf pour simuler absence de __version__
+        mocker.patch("app.core.img2pdf", spec=[])  # spec vide = pas d'attribut __version__
+
+        versions = get_tool_versions()
+
+        assert "7z" in versions
+        assert versions.get("img2pdf") == "unknown"
+
+    def test_get_tool_versions_all_tools_missing(self, mocker):
+        """get_tool_versions retourne 'unknown' pour tous si aucun outil n'est trouvé."""
+        from app.core import get_tool_versions
+
+        # Mock subprocess.run pour FileNotFoundError sur 7z
+        mocker.patch("app.core.subprocess.run", side_effect=FileNotFoundError("not found"))
+
+        # Mock img2pdf pour simuler absence de __version__
+        mocker.patch("app.core.img2pdf", spec=[])
+
+        versions = get_tool_versions()
+
+        assert versions.get("7z") == "unknown"
+        assert versions.get("img2pdf") == "unknown"
+

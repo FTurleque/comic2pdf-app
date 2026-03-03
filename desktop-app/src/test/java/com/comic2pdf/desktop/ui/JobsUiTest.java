@@ -3,7 +3,6 @@ package com.comic2pdf.desktop.ui;
 import com.sun.net.httpserver.HttpServer;
 import javafx.scene.control.TableView;
 import org.junit.jupiter.api.*;
-import org.testfx.framework.junit5.ApplicationTest;
 import org.testfx.util.WaitForAsyncUtils;
 import javafx.stage.Stage;
 
@@ -24,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code #jobsRefreshBtn} déclenche la requête vers le stub.</p>
  */
 @Tag("ui")
-class JobsUiTest extends ApplicationTest {
+class JobsUiTest extends BaseUiTest {
 
     private static HttpServer stubServer;
 

@@ -97,6 +97,15 @@ public class JobsController {
         sortedList.comparatorProperty().bind(jobsTable.comparatorProperty());
         jobsTable.setItems(sortedList);
 
+        // Défensive : si les contrôles de recherche / filtre ne sont pas injectés via FXML,
+        // créer des instances locales pour éviter NPE (utile pour certains environnements de test).
+        if (jobStateFilter == null) {
+            jobStateFilter = new ComboBox<>();
+        }
+        if (jobSearchField == null) {
+            jobSearchField = new TextField();
+        }
+
         // ComboBox états
         jobStateFilter.getItems().addAll(
                 "Tous", "DONE", "ERROR", "PREP_RUNNING", "OCR_RUNNING",

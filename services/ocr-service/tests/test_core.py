@@ -188,3 +188,73 @@ class TestRequeuRunning:
         count = requeue_running(str(running_dir), str(queue_dir))
         assert count == 0
 
+
+# ---------------------------------------------------------------------------
+# Tests requeue_running (edge cases)
+# ---------------------------------------------------------------------------
+
+class TestRequeueRunningEdgeCases:
+    """Tests des cas d'erreur pour requeue_running."""
+
+    def test_requeue_running_file_not_found(self, tmp_path):
+        """requeue_running retourne 0 si le dossier running n'existe pas."""
+        running_dir = str(tmp_path / "running")
+        queue_dir = str(tmp_path / "queue")
+        os.makedirs(queue_dir, exist_ok=True)
+
+        # running_dir n'existe pas
+        count = requeue_running(running_dir, queue_dir)
+
+        # Pas d'erreur, retourne 0
+        assert count == 0
+
+    def test_requeue_running_empty_dir(self, tmp_path):
+        """requeue_running retourne 0 si le dossier running est vide."""
+        running_dir = str(tmp_path / "running")
+        queue_dir = str(tmp_path / "queue")
+        os.makedirs(running_dir, exist_ok=True)
+        os.makedirs(queue_dir, exist_ok=True)
+
+        count = requeue_running(running_dir, queue_dir)
+
+        assert count == 0
+
+    def test_requeue_running_ignores_non_json(self, tmp_path):
+        """requeue_running ignore les fichiers non-.json."""
+        running_dir = str(tmp_path / "running")
+        queue_dir = str(tmp_path / "queue")
+        os.makedirs(running_dir, exist_ok=True)
+        os.makedirs(queue_dir, exist_ok=True)
+
+        # Créer fichiers .json et .txt
+        (tmp_path / "running" / "job1.json").write_text('{"id": 1}')
+        (tmp_path / "running" / "job2.json").write_text('{"id": 2}')
+        (tmp_path / "running" / "readme.txt").write_text("ignore me")
+
+        count = requeue_running(running_dir, queue_dir)
+
+        # Seulement 2 .json déplacés
+        assert count == 2
+        assert not os.path.exists(os.path.join(running_dir, "job1.json"))
+        assert not os.path.exists(os.path.join(running_dir, "job2.json"))
+        assert os.path.exists(os.path.join(running_dir, "readme.txt"))  # Pas déplacé
+        assert os.path.exists(os.path.join(queue_dir, "job1.json"))
+        assert os.path.exists(os.path.join(queue_dir, "job2.json"))
+
+    def test_requeue_running_creates_queue_dir_if_missing(self, tmp_path):
+        """requeue_running crée le dossier queue s'il n'existe pas."""
+        running_dir = str(tmp_path / "running")
+        queue_dir = str(tmp_path / "queue")
+        os.makedirs(running_dir, exist_ok=True)
+
+        (tmp_path / "running" / "job1.json").write_text('{"id": 1}')
+
+        # queue_dir n'existe pas
+        assert not os.path.exists(queue_dir)
+
+        count = requeue_running(running_dir, queue_dir)
+
+        # queue_dir créé automatiquement
+        assert os.path.exists(queue_dir)
+        assert count == 1
+        assert os.path.exists(os.path.join(queue_dir, "job1.json"))

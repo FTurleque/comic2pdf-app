@@ -75,6 +75,116 @@ Chaque script de service génère trois sorties dans le dossier du service :
 
 ---
 
+## Seuils de couverture et stratégie progressive
+
+### Baseline mesurée (2026-03-03)
+
+| Service | Couverture | Lignes couvertes | Seuil actuel | Seuil cible |
+|---------|-----------|------------------|--------------|-------------|
+| **prep-service** | 53.76% | 150/279 | 60% | 70% |
+| **ocr-service** | 60.25% | 147/244 | 60% | 70% |
+| **orchestrator** | 53.73% | 353/657 | 60% | 70% |
+
+### Stratégie de montée progressive
+
+**Phase 1 (actuelle)** : Seuil minimum **60%** (`--cov-fail-under=60`)
+- Tous les services doivent maintenir au moins 60% de couverture
+- Les tests échouent si la couverture descend en dessous du seuil
+- Variable d'environnement `PY_COV_MIN` permet de configurer le seuil
+
+**Phase 2 (objectif T2 2026)** : Seuil **65%**
+- Ajouter des tests pour couvrir :
+  - Chemins d'erreur non testés (cas limite)
+  - Fonctions utilitaires (`logger.py`, `utils.py`)
+  - Handlers startup/shutdown des services FastAPI
+
+**Phase 3 (objectif T3 2026)** : Seuil **70%**
+- Cible finale pour tous les services
+- Couverture complète des cas nominaux + erreurs
+
+### Configuration du seuil
+
+#### Via variable d'environnement (méthode recommandée)
+
+```powershell
+# Windows PowerShell
+$env:PY_COV_MIN=65
+.\scripts\test_prep.ps1
+```
+
+```bash
+# Linux / macOS
+PY_COV_MIN=65 ./scripts/test_prep.sh
+```
+
+#### Via paramètre de script (PowerShell uniquement)
+
+```powershell
+.\scripts\test_prep.ps1 -CovMin 65
+.\scripts\test_ocr.ps1 -CovMin 70
+.\scripts\test_orchestrator.ps1 -CovMin 60
+```
+
+#### Seuil par défaut
+
+Si `PY_COV_MIN` n'est pas défini : **60%** (phase 1).
+
+### Rapports détaillés
+
+Chaque exécution génère :
+1. **Terminal** : Résumé + lignes non couvertes (stdout)
+2. **`coverage.xml`** : Format Cobertura pour CI/CD
+3. **`htmlcov/index.html`** : Navigation interactive (détails ligne par ligne)
+
+#### Exemple de sortie terminal
+
+```
+---------- coverage: platform win32, python 3.13.7 -----------
+Name                    Stmts   Miss  Cover   Missing
+-----------------------------------------------------
+app\__init__.py             0      0   100%
+app\core.py               122     22    82%   45-52, 78-81, 115-120
+app\main.py               131     63    52%   89-105, 138-174, 210-235
+app\utils.py               19     9     53%   28-31, 40-44
+-----------------------------------------------------
+TOTAL                     279    129    54%
+
+Coverage failure: total of 54% is below --cov-fail-under=60%
+```
+
+> L'échec **bloque le build** : exit code ≠ 0. C'est voulu pour garantir la qualité.
+
+### Zones à améliorer en priorité
+
+| Service | Fichier | Couverture actuelle | Raison de faible couverture |
+|---------|---------|--------------------|-----------------------------|
+| **prep-service** | `main.py` | 52.29% | Logique startup/worker peu testée |
+| **prep-service** | `utils.py` | 52.63% | Fonctions utilitaires (sha256, list_images) non testées |
+| **prep-service** | `logger.py` | 0% | Module logger non couvert (tests API mockent worker_loop) |
+| **ocr-service** | `main.py` | ~50% | Logique startup/worker peu testée |
+| **ocr-service** | `logger.py` | 0% | Module logger non couvert |
+| **orchestrator** | `main.py` | 23.94% | Boucle principale non testée (par design : tests sur `process_tick`) |
+| **orchestrator** | `utils.py` | 77% | Fonctions utilitaires partiellement couvertes |
+
+> **Note** : `main.py` des services FastAPI a une couverture faible car les tests API mockent `worker_loop`.
+> Les fonctions pures (`run_job`, `claim_one`) sont testées dans `test_jobs.py` et `test_core.py`.
+
+### Ajustement temporaire du seuil
+
+Pour permettre la transition progressive, il est possible d'ajuster temporairement le seuil :
+
+```powershell
+# Windows — permettre prep-service et orchestrator de passer avec leur couverture actuelle
+$env:PY_COV_MIN=53
+.\scripts\test_prep.ps1
+.\scripts\test_orchestrator.ps1
+```
+
+> **Attention** : Cette pratique est déconseillée en CI/CD. Le seuil doit être maintenu ou augmenté,
+> jamais diminué, sauf cas exceptionnel documenté.
+
+---
+
 ## Tests Python (pytest)
 
 Les scripts ci-dessus exécutent :
@@ -113,71 +223,50 @@ mvn test
 
 ---
 
-## Tests UI JavaFX (TestFX — profil `ui-tests`)
+## Couverture de code Java (JaCoCo)
 
-Les tests UI sont tagués `@Tag("ui")` et **exclus de `mvn test`** par défaut.
-Pour les exécuter, utiliser le profil Maven `ui-tests`.
+### Vue d'ensemble
 
-### Mode visuel par défaut (requiert un écran)
+Le module `desktop-app` utilise **JaCoCo** pour mesurer la couverture de code et imposer des seuils anti-régression.
 
-```powershell
-# Windows PowerShell — via le script dédié (recommandé)
-.\scripts\test_desktop.ps1 -Ui
+| Métrique | Phase 1 (actuelle) | Phase 2 (T2 2026) | Phase 3 (T3 2026) |
+|----------|-------------------|-------------------|-------------------|
+| **LINE** | ≥ 59% (baseline 61%) | ≥ 63% | ≥ 67% |
+| **BRANCH** | ≥ 39% (baseline 41%) | ≥ 44% | ≥ 49% |
 
-# ou directement
-cd desktop-app
-mvn -Pui-tests test
+### Baseline mesurée (module `desktop-app`, 2026-03-03)
 
-# ou via l'ancien script
-.\scripts\run_ui_tests.ps1
-```
+- Ligne (LINE) : 241 lignes couvertes / (241 + 558) total = 241 / 799 = 30.16%
+- Branches (BRANCH) : 40 branches couvertes / (40 + 190) total = 40 / 230 = 17.39%
 
-```bash
-# Linux / macOS
-./scripts/test_desktop.sh --ui
-# ou
-cd desktop-app
-mvn -Pui-tests test
-```
+> Remarque : ces chiffres viennent du rapport JaCoCo généré localement :
+> `desktop-app/target/site/jacoco/jacoco.xml` (et `index.html`).
 
-**Résultat attendu** : `BUILD SUCCESS` — `Tests run: 4, Failures: 0, Errors: 0`
+### Seuils appliqués (Phase 1 - anti-régression)
 
-### Mode headless Monocle (opt-in, sans écran)
+Conformément à la politique "Option A" (mesurer d'abord, verrouiller ensuite), le profil `coverage-check`
+utilise des seuils initiaux calculés à `baseline - 2 points` :
+
+- LINE minimum : 30.16% − 2% → arrondi conservateur = **28%** (0.28)
+- BRANCH minimum : 17.39% − 2% → arrondi conservateur = **15%** (0.15)
+
+Ces seuils sont appliqués uniquement via le profil Maven `coverage-check` :
 
 ```powershell
-# Windows PowerShell
-.\scripts\run_ui_tests_headless.ps1
-# flags : -Dtestfx.headless=true -Dprism.order=sw -Dprism.verbose=true
+# Mesurer la baseline (génère HTML + XML, sans check)
+cd desktop-app
+mvn -Pcoverage clean verify
+
+# Activer le verrouillage (coverage + check)
+cd desktop-app
+mvn -Pcoverage -Pcoverage-check clean verify
 ```
 
-```bash
-# Linux / macOS
-./scripts/run_ui_tests_headless.sh
-```
+Les rapports JaCoCo produits se trouvent :
+- HTML : `desktop-app/target/site/jacoco/index.html`
+- XML  : `desktop-app/target/site/jacoco/jacoco.xml`
 
-> Si aucune fenêtre ne s'affiche (serveur sans GPU), ajouter :
-> `-Dglass.platform=Monocle -Dmonocle.platform=Headless`
-
-> **Note `InaccessibleObjectException`** (rare sur Java 21+) : si Surefire lève une erreur
-> sur `com.sun.net.httpserver`, ajouter dans `argLine` du profil `ui-tests` dans `pom.xml` :
-> `--add-exports jdk.httpserver/com.sun.net.httpserver=ALL-UNNAMED`
-
-### Séquentialité des tests UI
-
-Les tests UI utilisent `TestableMainApp` avec des champs statiques (`Optional`).
-Les tests s'exécutent **séquentiellement** (comportement par défaut Surefire).
-Ne pas ajouter `@Execution(CONCURRENT)` sur les classes de tests UI.
-
-### Tests UI disponibles
-
-| Classe | Ce qu'elle couvre |
-|---|---|
-| `MainAppUiTest` | Les 3 onglets (Doublons, Jobs, Configuration) sont présents |
-| `DuplicatesUiTest` | Refresh doublons → table remplie depuis un JSON de rapport |
-| `ConfigUiTest` | Apply config → stub HTTP local reçoit le JSON attendu |
-| `JobsUiTest` | Refresh manuel jobs → table remplie depuis stub `GET /jobs` |
-
-> Aucun test UI ne se connecte au backend réel. Tous utilisent des stubs `com.sun.net.httpserver.HttpServer`.
+> Exclusions Phase 1 : `com.comic2pdf.desktop.model.*`, `com.comic2pdf.desktop.ui.controller.*`, `com.comic2pdf.desktop.MainApp` — justifiées (JavaFX glue / getters & setters) ; réévaluer si logique métier ajoutée.
 
 ---
 
@@ -450,4 +539,3 @@ class MonServiceTest {
 ## Retour
 
 [← Retour à la documentation développeur](README.md)
-
