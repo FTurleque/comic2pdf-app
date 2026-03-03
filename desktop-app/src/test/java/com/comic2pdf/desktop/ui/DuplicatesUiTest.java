@@ -3,7 +3,6 @@ package com.comic2pdf.desktop.ui;
 import javafx.scene.control.TableView;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
-import org.testfx.framework.junit5.ApplicationTest;
 import org.testfx.util.WaitForAsyncUtils;
 import javafx.stage.Stage;
 
@@ -23,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * au moment où {@code TestableMainApp.start()} est invoqué.</p>
  */
 @Tag("ui")
-class DuplicatesUiTest extends ApplicationTest {
+class DuplicatesUiTest extends BaseUiTest {
 
     @TempDir
     static Path dataDir;

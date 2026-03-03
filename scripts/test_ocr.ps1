@@ -6,11 +6,20 @@
     - Cree le venv si absent (py -3 ou python en fallback)
     - Installe les dependances dev (requirements-dev.txt)
     - Lance pytest avec rapport de couverture terminal + XML + HTML
+    - Impose un seuil minimal de couverture (PY_COV_MIN, défaut: 60%)
     Sorties : services/ocr-service/coverage.xml
               services/ocr-service/htmlcov/
+.PARAMETER CovMin
+    Seuil minimal de couverture (%). Défaut: 60 (env: PY_COV_MIN).
 .EXAMPLE
     .\scripts\test_ocr.ps1
+    .\scripts\test_ocr.ps1 -CovMin 65
 #>
+[CmdletBinding()]
+param(
+    [int]$CovMin = [int]($env:PY_COV_MIN -or 60)
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -37,12 +46,14 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     # --- Tests + couverture ---
-    Write-Host "  > pytest [ocr-service]" -ForegroundColor Cyan
+    Write-Host "  > pytest [ocr-service] (seuil couverture: $CovMin%)" -ForegroundColor Cyan
     & $py -m pytest -q --tb=short `
         --cov=app `
+        --cov-report=term `
         --cov-report=term-missing `
         "--cov-report=xml:coverage.xml" `
         "--cov-report=html:htmlcov" `
+        "--cov-fail-under=$CovMin" `
         tests
     exit $LASTEXITCODE
 }

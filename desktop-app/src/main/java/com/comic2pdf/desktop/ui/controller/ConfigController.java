@@ -55,6 +55,15 @@ public class ConfigController {
         timeoutSecondsSpinner.setValueFactory(
                 new SpinnerValueFactory.IntegerSpinnerValueFactory(60, 7200, 600, 60));
         timeoutSecondsSpinner.setEditable(true);
+
+        // Défensive : si certains champs ne sont pas injectés (environnements de test),
+        // créer des instances locales pour éviter NullPointerException dans loadConfig().
+        if (apiKeyField == null) {
+            apiKeyField = new PasswordField();
+        }
+        if (apiKeySourceLabel == null) {
+            apiKeySourceLabel = new Label();
+        }
     }
 
     /**

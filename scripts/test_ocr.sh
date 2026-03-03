@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Lance les tests unitaires + couverture du ocr-service.
 #
+# Impose un seuil minimal de couverture (PY_COV_MIN, défaut: 60%).
 # Sorties : services/ocr-service/coverage.xml
 #           services/ocr-service/htmlcov/
 set -euo pipefail
@@ -8,6 +9,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVICE_DIR="$REPO_ROOT/services/ocr-service"
+
+# Seuil de couverture (variable d'environnement ou défaut 60)
+COV_MIN="${PY_COV_MIN:-60}"
 
 cd "$SERVICE_DIR"
 
@@ -24,11 +28,13 @@ echo "  > pip install -r requirements-dev.txt"
 "$PY" -m pip install -q -r requirements-dev.txt
 
 # --- Tests + couverture ---
-echo "  > pytest [ocr-service]"
+echo "  > pytest [ocr-service] (seuil couverture: ${COV_MIN}%)"
 "$PY" -m pytest -q --tb=short \
     --cov=app \
+    --cov-report=term \
     --cov-report=term-missing \
     --cov-report=xml:coverage.xml \
     --cov-report=html:htmlcov \
+    --cov-fail-under="$COV_MIN" \
     tests
 

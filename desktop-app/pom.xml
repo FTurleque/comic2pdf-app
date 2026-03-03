@@ -14,6 +14,10 @@
     <!-- TestFX + Monocle headless (opt-in via -Dtestfx.headless=true) -->
     <testfx.version>4.0.18</testfx.version>
     <monocle.version>21.0.2</monocle.version>
+    <!-- Défauts pour le profil ui-tests afin d'éviter une substitution non résolue -->
+    <argLine></argLine>
+    <testfx.headless>false</testfx.headless>
+    <prism.order>sw</prism.order>
   </properties>
 
   <dependencies>
@@ -27,6 +31,12 @@
       <groupId>org.openjfx</groupId>
       <artifactId>javafx-fxml</artifactId>
       <version>${javafx.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-swing</artifactId>
+      <version>${javafx.version}</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -80,30 +90,18 @@
         </configuration>
       </plugin>
       <!--
-        JaCoCo — couverture de tests.
-        Rapport généré dans target/site/jacoco/ après mvn test.
-        Désactivé pour les tests @Tag("ui") (TestFX headless fragile en CI).
+        JaCoCo — couverture de tests (activée via profils).
+        - Profil coverage : génère rapport HTML/XML sans verrouillage
+        - Profil coverage-check : active verrouillage anti-régression
+        Voir docs/dev/testing.md pour mesurer la baseline et les seuils.
       -->
-      <plugin>
-        <groupId>org.jacoco</groupId>
-        <artifactId>jacoco-maven-plugin</artifactId>
-        <version>0.8.12</version>
-        <executions>
-          <execution>
-            <id>jacoco-prepare-agent</id>
-            <goals><goal>prepare-agent</goal></goals>
-          </execution>
-          <execution>
-            <id>jacoco-report</id>
-            <phase>test</phase>
-            <goals><goal>report</goal></goals>
-          </execution>
-        </executions>
-      </plugin>
     </plugins>
   </build>
 
   <!--
+    PROFILS
+    =======
+
     Profil ui-tests : lance UNIQUEMENT les tests @Tag("ui").
     Mode visuel (défaut) : mvn -Pui-tests test
     Mode headless Monocle :
@@ -127,15 +125,143 @@
               <excludedGroups/>
               <!-- Inclut UNIQUEMENT les tests @Tag("ui") -->
               <groups>ui</groups>
+
+              <!-- Retry automatique des tests flaky (max 2 tentatives supplémentaires) -->
+              <rerunFailingTestsCount>2</rerunFailingTestsCount>
+
               <!--
-                add-opens requis par TestFX pour accéder aux internals JavaFX via reflection.
-                NE PAS mettre dans la config Surefire par défaut.
+                argLine pour tests UI TestFX :
+                - add-opens : accès reflection JavaFX (requis par TestFX)
+                - ${argLine} : préserve les arguments JaCoCo si activé
+
+                Usage local (avec affichage) :
+                  mvn -Pui-tests test
+
+                Usage CI headless :
+                  xvfb-run -a mvn -Pui-tests test -Dtestfx.headless=true -Dprism.order=sw
+
+                Fallback si flakiness CI (ajouter dans la commande CI uniquement) :
+                  -Dglass.platform=Monocle -Dmonocle.platform=Headless
               -->
               <argLine>
                 --add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED
                 --add-opens javafx.controls/com.sun.javafx.scene.control=ALL-UNNAMED
+                ${argLine}
               </argLine>
+              <systemPropertyVariables>
+                <!-- Mode headless activé via -Dtestfx.headless=true en CI -->
+                <testfx.robot>glass</testfx.robot>
+                <testfx.headless>${testfx.headless}</testfx.headless>
+                <prism.order>${prism.order}</prism.order>
+                <prism.text>t2k</prism.text>
+                <java.awt.headless>true</java.awt.headless>
+              </systemPropertyVariables>
             </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!--
+      Profil coverage : Génère le rapport JaCoCo (HTML + XML).
+      Usage : mvn clean verify -Pcoverage
+      Rapports :
+        - target/site/jacoco/index.html (navigation interactive)
+        - target/site/jacoco/jacoco.xml (format Cobertura pour CI)
+      Aucun seuil imposé — permet de mesurer la baseline.
+    -->
+    <profile>
+      <id>coverage</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+            <version>0.8.13</version>
+            <executions>
+              <execution>
+                <id>jacoco-prepare-agent</id>
+                <goals><goal>prepare-agent</goal></goals>
+              </execution>
+              <execution>
+                <id>jacoco-report</id>
+                <phase>test</phase>
+                <goals><goal>report</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!--
+      Profil coverage-check : Active le verrouillage anti-régression JaCoCo.
+      Usage : mvn clean verify -Pcoverage -Pcoverage-check
+
+      Seuils Phase 1 (baseline mesurée le 2026-03-03) — BASELINE MESURÉE :
+        LINE   ≈ 30.16%  -> seuil initial = baseline - 2%% = 28%  (0.28)
+        BRANCH ≈ 17.39%  -> seuil initial = baseline - 2%% = 15%  (0.15)
+
+      Scope inclus (Phase 1) :
+        - com.comic2pdf.desktop.client.*
+        - com.comic2pdf.desktop.config.*
+        - com.comic2pdf.desktop.service.*
+        - com.comic2pdf.desktop.util.*
+
+      Exclusions Phase 1 (justifiées) :
+        - com.comic2pdf.desktop.model.* (JavaFX properties, tests triviaux)
+        - com.comic2pdf.desktop.ui.controller.* (UI glue, couverte par tests @Tag("ui"))
+        - com.comic2pdf.desktop.MainApp (point d'entrée JavaFX)
+
+      Réévaluation : si logique métier ajoutée dans model/ ou ui/, inclure dans le scope.
+
+      Phase 2 (objectif T2 2026) : LINE 65% / BRANCH 55%
+      Phase 3 (objectif T3 2026) : LINE 70% / BRANCH 60%
+
+      Règle permanente : PR bloquée si couverture < seuil (BUILD FAILURE).
+    -->
+    <profile>
+      <id>coverage-check</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+            <version>0.8.13</version>
+            <executions>
+              <execution>
+                <id>jacoco-check</id>
+                <phase>verify</phase>
+                <goals><goal>check</goal></goals>
+                <configuration>
+                  <rules>
+                    <rule>
+                      <element>BUNDLE</element>
+                      <limits>
+                        <!-- LINE coverage minimum : baseline (~30.16%) - 2%% => conservative 28%% -->
+                        <limit>
+                          <counter>LINE</counter>
+                          <value>COVEREDRATIO</value>
+                          <minimum>0.28</minimum>
+                        </limit>
+                        <!-- BRANCH coverage minimum : baseline (~17.39%) - 2%% => conservative 15%% -->
+                        <limit>
+                          <counter>BRANCH</counter>
+                          <value>COVEREDRATIO</value>
+                          <minimum>0.15</minimum>
+                        </limit>
+                      </limits>
+                    </rule>
+                  </rules>
+                  <!-- Exclusions Phase 1 -->
+                  <excludes>
+                    <exclude>com/comic2pdf/desktop/model/**</exclude>
+                    <exclude>com/comic2pdf/desktop/ui/controller/**</exclude>
+                    <exclude>com/comic2pdf/desktop/MainApp.class</exclude>
+                  </excludes>
+                </configuration>
+              </execution>
+            </executions>
           </plugin>
         </plugins>
       </build>

@@ -2,7 +2,6 @@ package com.comic2pdf.desktop.ui;
 
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.*;
-import org.testfx.framework.junit5.ApplicationTest;
 import org.testfx.util.WaitForAsyncUtils;
 import javafx.stage.Stage;
 
@@ -19,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Le stub HTTP et les overrides sont initialisés dans {@code @BeforeAll} (statique).</p>
  */
 @Tag("ui")
-class ConfigUiTest extends ApplicationTest {
+class ConfigUiTest extends BaseUiTest {
 
     private static HttpServer stubServer;
     private static final AtomicReference<String> capturedBody = new AtomicReference<>();

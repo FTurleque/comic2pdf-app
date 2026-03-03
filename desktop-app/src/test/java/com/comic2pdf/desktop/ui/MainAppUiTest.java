@@ -6,7 +6,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.testfx.framework.junit5.ApplicationTest;
 import org.testfx.util.WaitForAsyncUtils;
 import javafx.stage.Stage;
 
@@ -22,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Les overrides sont donc initialisés dans {@code @BeforeAll} (statique).</p>
  */
 @Tag("ui")
-class MainAppUiTest extends ApplicationTest {
+class MainAppUiTest extends BaseUiTest {
 
     @BeforeAll
     static void setup() {
@@ -53,4 +52,3 @@ class MainAppUiTest extends ApplicationTest {
         assertNotNull(lookup("#tabConfig").query(), "#tabConfig manquant");
     }
 }
-

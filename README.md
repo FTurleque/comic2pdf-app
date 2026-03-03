@@ -3,6 +3,7 @@
 > 📚 **Documentation complète** : [docs/README.md](docs/README.md)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+[![CI Status](https://github.com/FTurleque/comic2pdf-app/actions/workflows/ci.yml/badge.svg)](https://github.com/FTurleque/comic2pdf-app/actions/workflows/ci.yml)
 
 Objectif : convertir des fichiers `.cbr` / `.cbz` en **PDF avec texte sélectionnable** (OCR) via une chaîne **Docker** fiable.
 
