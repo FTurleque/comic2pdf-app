@@ -8,7 +8,6 @@ import javafx.stage.Stage;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
