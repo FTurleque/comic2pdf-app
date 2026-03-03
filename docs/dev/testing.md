@@ -539,3 +539,50 @@ class MonServiceTest {
 ## Retour
 
 [← Retour à la documentation développeur](README.md)
+
+---
+
+# Baseline couverture (Sprint 1)
+
+Cette section décrit comment mesurer la baseline de couverture des tests pour le Sprint 1.
+
+Scope
+-----
+- Tests API d'intégration ajoutés pour : `services/prep-service` et `services/ocr-service`.
+- `orchestrator` n'est pas couvert par des tests API dans ce sprint (script/test-only).
+
+Règles importantes
+------------------
+- Isolation FS : chaque test API force `DATA_DIR` vers un répertoire temporaire (`tmp_path`) via `monkeypatch.setenv("DATA_DIR", tmp_path)` ou fixture autouse.
+- Désactivation des workers en tests : les handlers startup des services respectent la variable d'environnement `DISABLE_WORKERS`. Les tests définissent `DISABLE_WORKERS=1` pour éviter de lancer des threads en arrière-plan.
+- Pas d'outils système requis : tous les appels à `subprocess.run` (7z, ocrmypdf, tesseract, ghostscript) sont mockés dans les tests.
+
+Commandes PowerShell — exécuter localement
+------------------------------------------
+# prep-service
+cd services\prep-service ; pytest --cov=app --cov-report=term --cov-report=xml:coverage.xml --cov-report=html:htmlcov -q
+
+# ocr-service
+cd services\ocr-service ; pytest --cov=app --cov-report=term --cov-report=xml:coverage.xml --cov-report=html:htmlcov -q
+
+# (optionnel) orchestrator
+cd services\orchestrator ; pytest --cov=app --cov-report=term --cov-report=xml:coverage.xml --cov-report=html:htmlcov -q
+
+# JaCoCo — desktop-app (baseline report only, pas de seuil)
+cd desktop-app ; mvn -q clean verify
+# Alternative (report-only si le plugin n'est pas configuré dans le POM):
+cd desktop-app ; mvn -q test org.jacoco:jacoco-maven-plugin:0.8.10:report
+
+Résultats attendus
+------------------
+- Un résumé 'TOTAL' lisible dans la sortie console pytest (présent dans la sortie --cov=term).
+- Fichiers générés par service : `coverage.xml` et dossier `htmlcov/`.
+- JaCoCo : rapport HTML dans `desktop-app/target/site/jacoco/index.html` (et `jacoco.xml` si configuré).
+
+Remarque CI
+-----------
+Pour ce sprint (Sprint 1) nous ne bloquons pas la CI sur des seuils de couverture. La baseline est uniquement mesurée et documentée. Les verrous/seuils seront envisagés en Sprint 2.
+
+---
+
+<!-- fin de la section Baseline couverture (Sprint 1) -->
