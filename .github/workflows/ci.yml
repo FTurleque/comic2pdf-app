@@ -16,7 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [prep-service, ocr-service, orchestrator]
+        # Seuils CI Sprint 2 — tolérance initiale baseline−5
+        # Baselines Sprint 1 : prep=85.30%, ocr=88.52%, orchestrator=66.36%
+        # PR chore/coverage-thresholds-sprint2-stable pour monter à baseline−2 (83/86/64)
+        include:
+          - { service: prep-service,  cov_min: 80 }
+          - { service: ocr-service,   cov_min: 83 }
+          - { service: orchestrator,  cov_min: 61 }
 
     steps:
       - name: Checkout
@@ -35,13 +41,28 @@ jobs:
 
       - name: Run pytest with coverage
         working-directory: services/${{ matrix.service }}
-        run: pytest -q --cov=app --cov-report=xml --cov-report=term-missing
+        run: |
+          pytest -q \
+            --cov=app \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=${{ matrix.cov_min }}
 
-      - name: Upload coverage report
+      - name: Upload coverage XML
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: coverage-${{ matrix.service }}
           path: services/${{ matrix.service }}/coverage.xml
+          retention-days: 14
+
+      - name: Upload coverage HTML
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: htmlcov-${{ matrix.service }}
+          path: services/${{ matrix.service }}/htmlcov
           retention-days: 14
 
   # ===========================================================================
@@ -117,16 +138,24 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Run tests with JaCoCo
+      - name: Run tests + JaCoCo check (anti-régression)
         working-directory: desktop-app
-        run: mvn -q test
+        run: mvn clean verify -Pcoverage -Pcoverage-check
 
-      - name: Upload JaCoCo report
+      - name: Upload JaCoCo HTML report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: jacoco-report
           path: desktop-app/target/site/jacoco/
+          retention-days: 14
+
+      - name: Upload JaCoCo XML
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jacoco-xml
+          path: desktop-app/target/site/jacoco/jacoco.xml
           retention-days: 14
 
   # ===========================================================================
@@ -150,14 +179,15 @@ jobs:
       - name: Install xvfb (virtual display)
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Run UI tests with xvfb (headless)
+      - name: Run UI tests with xvfb + Monocle (headless)
         working-directory: desktop-app
         run: |
           xvfb-run -a mvn -q -Pui-tests test \
             -Dtestfx.headless=true \
             -Dprism.order=sw \
+            -Dglass.platform=Monocle \
+            -Dmonocle.platform=Headless \
             -Dprism.verbose=true
-        # Fallback si flakiness : ajouter -Dglass.platform=Monocle -Dmonocle.platform=Headless
 
       - name: Upload UI test reports
         uses: actions/upload-artifact@v4

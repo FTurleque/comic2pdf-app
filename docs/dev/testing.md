@@ -77,32 +77,30 @@ Chaque script de service génère trois sorties dans le dossier du service :
 
 ## Seuils de couverture et stratégie progressive
 
-### Baseline mesurée (2026-03-03)
+### Baseline et seuils CI (Sprint 2 — 2026-03-04)
 
-| Service | Couverture | Lignes couvertes | Seuil actuel | Seuil cible |
-|---------|-----------|------------------|--------------|-------------|
-| **prep-service** | 53.76% | 150/279 | 60% | 70% |
-| **ocr-service** | 60.25% | 147/244 | 60% | 70% |
-| **orchestrator** | 53.73% | 353/657 | 60% | 70% |
+| Service | Baseline Sprint 1 | Seuil CI Sprint 2 | Objectif baseline−2 | Cible T2 2026 |
+|---------|------------------|-------------------|---------------------|---------------|
+| **prep-service** | 85.30% | **80%** | 83% | 70% |
+| **ocr-service** | 88.52% | **83%** | 86% | 70% |
+| **orchestrator** | 66.36% | **61%** | 64% | 70% |
 
-### Stratégie de montée progressive
+> **Tolérance initiale baseline−5** : les seuils CI Sprint 2 (80/83/61%) sont volontairement
+> 5 points sous la baseline pour absorber les variations légitimes. Une fois la CI stable,
+> ouvrir la PR `chore/coverage-thresholds-sprint2-stable` pour monter aux seuils baseline−2
+> (83/86/64%) et mettre à jour `ci.yml` + ce fichier simultanément.
 
-**Phase 1 (actuelle)** : Seuil minimum **60%** (`--cov-fail-under=60`)
-- Tous les services doivent maintenir au moins 60% de couverture
-- Les tests échouent si la couverture descend en dessous du seuil
-- Variable d'environnement `PY_COV_MIN` permet de configurer le seuil
+### Différence local vs CI
 
-**Phase 2 (objectif T2 2026)** : Seuil **65%**
-- Ajouter des tests pour couvrir :
-  - Chemins d'erreur non testés (cas limite)
-  - Fonctions utilitaires (`logger.py`, `utils.py`)
-  - Handlers startup/shutdown des services FastAPI
+| Contexte | Seuil | Source |
+|----------|-------|--------|
+| **Local** (`scripts/test_*.ps1` / `test_*.sh`) | 60% (défaut) | Variable `PY_COV_MIN` (modifiable) |
+| **CI GitHub Actions** | 80 / 83 / 61% | Hardcodé dans la matrice `include` de `ci.yml` |
 
-**Phase 3 (objectif T3 2026)** : Seuil **70%**
-- Cible finale pour tous les services
-- Couverture complète des cas nominaux + erreurs
+> En local, le seuil 60% est un filet de sécurité minimal. La CI applique les vraies baselines
+> mesurées au Sprint 1 pour garantir l'anti-régression.
 
-### Configuration du seuil
+### Configuration du seuil local
 
 #### Via variable d'environnement (méthode recommandée)
 
@@ -169,19 +167,6 @@ Coverage failure: total of 54% is below --cov-fail-under=60%
 > **Note** : `main.py` des services FastAPI a une couverture faible car les tests API mockent `worker_loop`.
 > Les fonctions pures (`run_job`, `claim_one`) sont testées dans `test_jobs.py` et `test_core.py`.
 
-### Ajustement temporaire du seuil
-
-Pour permettre la transition progressive, il est possible d'ajuster temporairement le seuil :
-
-```powershell
-# Windows — permettre prep-service et orchestrator de passer avec leur couverture actuelle
-$env:PY_COV_MIN=53
-.\scripts\test_prep.ps1
-.\scripts\test_orchestrator.ps1
-```
-
-> **Attention** : Cette pratique est déconseillée en CI/CD. Le seuil doit être maintenu ou augmenté,
-> jamais diminué, sauf cas exceptionnel documenté.
 
 ---
 
@@ -257,9 +242,9 @@ Ces seuils sont appliqués uniquement via le profil Maven `coverage-check` :
 cd desktop-app
 mvn -Pcoverage clean verify
 
-# Activer le verrouillage (coverage + check)
+# Activer le verrouillage — commande CI standard Sprint 2
 cd desktop-app
-mvn -Pcoverage -Pcoverage-check clean verify
+mvn clean verify -Pcoverage -Pcoverage-check
 ```
 
 Les rapports JaCoCo produits se trouvent :
@@ -267,6 +252,39 @@ Les rapports JaCoCo produits se trouvent :
 - XML  : `desktop-app/target/site/jacoco/jacoco.xml`
 
 > Exclusions Phase 1 : `com.comic2pdf.desktop.model.*`, `com.comic2pdf.desktop.ui.controller.*`, `com.comic2pdf.desktop.MainApp` — justifiées (JavaFX glue / getters & setters) ; réévaluer si logique métier ajoutée.
+
+### Tests UI CI — Monocle activé directement (Sprint 2)
+
+Depuis Sprint 2, Monocle est activé **directement** dans la commande CI (plus de commentaire
+`# Fallback`). Cette configuration est plus stable en Ubuntu headless.
+
+**Commande CI (`.github/workflows/ci.yml`, job `java-ui-tests`) :**
+
+```bash
+xvfb-run -a mvn -q -Pui-tests test \
+  -Dtestfx.headless=true \
+  -Dprism.order=sw \
+  -Dglass.platform=Monocle \
+  -Dmonocle.platform=Headless \
+  -Dprism.verbose=true
+```
+
+**Reproduire en local (Linux/macOS avec Xvfb) :**
+
+```bash
+xvfb-run -a mvn -Pui-tests test \
+  -Dtestfx.headless=true \
+  -Dprism.order=sw \
+  -Dglass.platform=Monocle \
+  -Dmonocle.platform=Headless
+```
+
+**En local Windows (sans Xvfb) :**
+
+```powershell
+mvn -Pui-tests test -Dtestfx.headless=true -Dprism.order=sw
+# Monocle non requis sur Windows (rendu natif disponible)
+```
 
 ---
 
