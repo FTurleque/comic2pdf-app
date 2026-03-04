@@ -366,38 +366,83 @@ docker compose down
 
 ---
 
-## 10) Mode sans Docker (CLI / watch local) — À venir
+## 10) Mode sans Docker (CLI / watch local)
 
-### Limitation actuelle
+### Prérequis
 
-Les trois services Python (`prep-service`, `ocr-service`, `orchestrator`) sont conçus pour
-tourner dans des conteneurs Docker séparés. L'exécution locale sans Docker nécessite :
+- `7z` (7-Zip) dans le PATH — [7-zip.org](https://www.7-zip.org/) · `apt install p7zip-full` · `brew install p7zip`
+- `ocrmypdf`, `tesseract`, `ghostscript` — `pip install ocrmypdf` + binaires système
+- `img2pdf` — inclus dans `tools/requirements.txt`
 
-- La présence des binaires `7z`, `ocrmypdf`, `tesseract`, `ghostscript` dans le PATH
-- La gestion manuelle des ports HTTP inter-services
+### Installation
 
-### Architecture future envisagée
-
-Un package Python unique `comic2pdf` regroupant les trois services :
-
-```
-tools/
-  cli.py           # comic2pdf input.cbz --lang fra+eng --out /tmp
-  watch_local.py   # surveillance dossier + pipeline complet en local
+```powershell
+# Windows PowerShell
+cd tools
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
 ```bash
-# Utilisation CLI envisagée
-python tools/cli.py MonComic.cbz --lang fra+eng --out ./pdfs/
-
-# Watch-folder local
-python tools/watch_local.py --in ./data/in --out ./data/out
+# Linux / macOS
+cd tools && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Ce mode est **intentionnellement reporté** à une prochaine itération pour :
-- Éviter la complexité des imports croisés entre services
-- Garantir la stabilité du pipeline Docker actuel
-- Permettre de valider les abstractions nécessaires (fonctions pures partagées)
+### Vérification des dépendances
+
+```bash
+python tools/cli.py --check-deps
+```
+
+### CLI — conversion ponctuelle
+
+```bash
+# Conversion CBZ → PDF (avec OCR)
+python tools/cli.py MonComic.cbz --lang fra+eng --out ./pdfs/
+
+# Sans OCR (rapide)
+python tools/cli.py MonComic.cbz --no-ocr --out ./pdfs/
+
+# Options
+python tools/cli.py --help
+```
+
+### Watch-folder local
+
+```bash
+# Surveiller ./data/in → PDFs dans ./data/out
+python tools/watch_local.py --in ./data/in --out ./data/out --lang fra+eng
+
+# Options
+python tools/watch_local.py --help
+```
+
+La convention `.part` → rename est respectée identiquement au mode Docker.
+Les doublons sont détectés et déplacés dans `--hold-dir` (défaut : `./data/hold/duplicates`).
+
+### Architecture
+
+```
+tools/
+  __init__.py         # Marqueur de package
+  pipeline_core.py    # Fonctions pures autonomes (extraction, images, OCR cmd, jobKey)
+  deps.py             # Détection dépendances système (shutil.which + messages actionnables)
+  cli.py              # Interface CLI (argparse)
+  watch_local.py      # Surveillance dossier + pipeline local
+  requirements.txt    # img2pdf
+  requirements-dev.txt# + pytest, pytest-cov, pytest-mock, pillow
+
+tests/tools/
+  test_deps.py        # Tests détection dépendances
+  test_pipeline_core.py # Tests fonctions pures
+  test_cli.py         # Tests CLI (subprocess mocké)
+  test_watch.py       # Tests watcher (subprocess mocké)
+  test_cli_e2e.py     # E2E minimal mocké + test réel optionnel (skipif 7z absent)
+```
+
+> **Documentation complète** : [`docs/user/usage.md`](docs/user/usage.md) · [`docs/user/installation.md`](docs/user/installation.md)
 
 ---
 

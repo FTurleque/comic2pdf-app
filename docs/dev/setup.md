@@ -305,6 +305,53 @@ mvn -q javafx:run
 
 ---
 
+## Setup tools/ (CLI et watch local)
+
+Le package `tools/` dispose de son propre venv et requirements.
+
+### Windows (PowerShell)
+
+```powershell
+cd tools
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+# Vérifier :
+pytest -q ..\tests\tools\
+deactivate
+```
+
+### Linux / macOS (bash)
+
+```bash
+cd tools
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest -q ../tests/tools/
+deactivate
+```
+
+### Script dédié
+
+```powershell
+.\scripts\test_tools.ps1        # Windows
+./scripts/test_tools.sh         # Linux / macOS
+```
+
+### Variables d'environnement (mode local)
+
+| Variable | Défaut | Description |
+|---|---|---|
+| `COMIC2PDF_IN_DIR` | `./data/in` | Dossier d'entrée du watcher |
+| `COMIC2PDF_OUT_DIR` | `./data/out` | Dossier de sortie des PDFs |
+| `COMIC2PDF_LANG` | `fra+eng` | Langue(s) OCR par défaut |
+| `COMIC2PDF_HOLD_DIR` | `./data/hold/duplicates` | Dossier doublons |
+
+Ces variables sont des alternatives aux arguments CLI ; les arguments CLI ont priorité.
+
+---
+
 ## Lancer en local sans Docker (limitations)
 
 Il est possible de lancer les services Python en local pour le développement, mais avec des contraintes importantes :

@@ -185,9 +185,59 @@ La configuration est persistée dans :
 
 ---
 
-## Note sur le mode CLI/local (sans Docker)
+## Mode CLI / watch local (sans Docker)
 
-Le mode CLI et watch-folder local (sans Docker) est **intentionnellement reporté** à une prochaine itération. Il nécessiterait la présence des binaires `7z`, `ocrmypdf`, `tesseract` et `ghostscript` dans le PATH système, ainsi qu'une gestion manuelle des ports HTTP inter-services. Cette fonctionnalité est marquée **à venir**.
+Le mode sans Docker est disponible via `tools/cli.py` et `tools/watch_local.py`.
+
+### Prérequis supplémentaires
+
+| Outil | Version | Installation |
+|---|---|---|
+| **7-Zip** | ≥ 21 | [7-zip.org](https://www.7-zip.org/) · `apt install p7zip-full` · `brew install p7zip` |
+| **Tesseract** | ≥ 5 | [UB-Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) · `apt install tesseract-ocr` · `brew install tesseract` |
+| **Ghostscript** | ≥ 9.5 | [ghostscript.com](https://www.ghostscript.com/) · `apt install ghostscript` · `brew install ghostscript` |
+| **ocrmypdf** | ≥ 14 | `pip install ocrmypdf` |
+| **img2pdf** | ≥ 0.4 | `pip install img2pdf` (inclus dans `tools/requirements.txt`) |
+
+### Installation des dépendances Python
+
+```powershell
+# Windows PowerShell
+cd tools
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+```bash
+# Linux / macOS
+cd tools
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Vérification des dépendances
+
+```powershell
+# Windows
+python tools/cli.py --check-deps
+# Linux / macOS
+python3 tools/cli.py --check-deps
+```
+
+Sortie attendue si tout est installé :
+
+```
+Vérification des dépendances :
+  ✓ 7z               /usr/bin/7z  [7-Zip 24.08]
+  ✓ ocrmypdf         /usr/local/bin/ocrmypdf  [ocrmypdf 16.x]
+  ✓ tesseract        /usr/bin/tesseract  [tesseract 5.x]
+  ✓ ghostscript      /usr/bin/gs  [10.x]
+  ✓ img2pdf (py)     v0.5.1
+
+OK — toutes les dépendances sont présentes.
+```
 
 ---
 
