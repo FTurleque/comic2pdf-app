@@ -195,7 +195,131 @@ Cliquer sur **Appliquer** :
 
 ---
 
+## Mode CLI (sans Docker)
+
+### Conversion ponctuelle
+
+```powershell
+# Windows PowerShell
+python tools/cli.py MonComic.cbz --lang fra+eng --out ./pdfs/
+```
+
+```bash
+# Linux / macOS
+python3 tools/cli.py MonComic.cbz --lang fra+eng --out ./pdfs/
+```
+
+### Options disponibles
+
+| Option | Défaut | Description |
+|---|---|---|
+| `--lang` | `fra+eng` | Langue(s) OCR Tesseract (ex : `fra`, `eng`, `fra+eng`) |
+| `--out` | `.` | Dossier de sortie du PDF |
+| `--no-ocr` | off | Produire uniquement le raw.pdf sans OCR |
+| `--keep-temp` | off | Conserver le dossier de travail temporaire |
+| `--check-deps` | — | Vérifier les dépendances et quitter |
+
+### Exemples
+
+```powershell
+# Vérifier les dépendances
+python tools/cli.py --check-deps
+
+# Conversion sans OCR (rapide)
+python tools/cli.py MonComic.cbz --no-ocr --out ./pdfs/
+
+# Conversion avec langue allemande
+python tools/cli.py MonComic.cbz --lang deu --out ./pdfs/
+
+# Conserver le dossier de travail pour débogage
+python tools/cli.py MonComic.cbz --keep-temp --out ./pdfs/
+```
+
+### Nommage de la sortie
+
+Le PDF produit suit la même convention que le mode Docker :
+
+```
+<nom_sans_extension>__job-<fileHash>__<profileHash>.pdf
+```
+
+---
+
+## Mode watch-folder local (sans Docker)
+
+### Démarrage de la surveillance
+
+```powershell
+# Windows PowerShell
+python tools/watch_local.py --in ./data/in --out ./data/out
+```
+
+```bash
+# Linux / macOS
+python3 tools/watch_local.py --in ./data/in --out ./data/out
+```
+
+### Options disponibles
+
+| Option | Défaut | Description |
+|---|---|---|
+| `--in` | `./data/in` | Dossier d'entrée à surveiller |
+| `--out` | `./data/out` | Dossier de sortie des PDFs |
+| `--lang` | `fra+eng` | Langue(s) OCR |
+| `--no-ocr` | off | Désactiver l'OCR |
+| `--keep-temp` | off | Conserver les dossiers temporaires |
+| `--poll-interval` | `2` | Intervalle de polling en secondes |
+| `--hold-dir` | `./data/hold/duplicates` | Dossier pour les doublons |
+| `--check-deps` | — | Vérifier les dépendances et quitter |
+
+### Convention de dépôt
+
+La même convention `.part` → rename est respectée :
+
+```powershell
+# Windows PowerShell — dépôt sûr
+Copy-Item "MonComic.cbz" ".\data\in\MonComic.cbz.part"
+Rename-Item ".\data\in\MonComic.cbz.part" "MonComic.cbz"
+```
+
+```bash
+# Linux / macOS
+cp MonComic.cbz ./data/in/MonComic.cbz.part
+mv ./data/in/MonComic.cbz.part ./data/in/MonComic.cbz
+```
+
+Le watcher ignore les fichiers `.part` et ne démarre le traitement qu'après le rename.
+
+### Gestion des doublons (mode local)
+
+En mode local, les doublons sont détectés via le même mécanisme `jobKey = fileHash__profileHash`. Un doublon est déplacé dans `--hold-dir/<jobKey>/` et un message est affiché :
+
+```
+[watch_local] DOUBLON détecté : 'MonComic.cbz'
+  jobKey   : abc123__def456
+  Existant : ./data/out/MonComic__job-abc123__def456.pdf
+  Fichier déplacé vers : ./data/hold/duplicates/abc123__def456/20260304-120000__MonComic.cbz
+```
+
+Pour forcer le retraitement, supprimer manuellement l'entrée de `hold/` et redéposer le fichier.
+
+### État persisté
+
+Le watcher maintient un fichier `processed.json` dans le dossier `--out` pour éviter les retraitements entre redémarrages :
+
+```json
+{
+  "abc123__def456": {
+    "fileName": "MonComic.cbz",
+    "jobKey": "abc123__def456",
+    "processedAt": "2026-03-04T12:00:00Z",
+    "outputPdf": "./data/out/MonComic__job-abc123__def456.pdf"
+  }
+}
+```
+
+---
+
 ## Retour
 
-[← Retour à la documentation utilisateur](README.md)
 

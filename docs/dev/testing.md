@@ -603,4 +603,68 @@ Pour ce sprint (Sprint 1) nous ne bloquons pas la CI sur des seuils de couvertur
 
 ---
 
+---
+
 <!-- fin de la section Baseline couverture (Sprint 1) -->
+
+---
+
+## Tests CLI et watch local (Sprint 3)
+
+### Emplacement des tests
+
+```
+tests/tools/
+  __init__.py
+  test_deps.py          # Détection dépendances (find_tool, require_tool, check_all_deps)
+  test_pipeline_core.py # Fonctions pures (FS, images, OCR cmd, jobKey)
+  test_cli.py           # Parsing args, validate_input, main() (pipeline mocké)
+  test_watch.py         # Boucle watcher, doublons, processed.json (tout mocké)
+  test_cli_e2e.py       # E2E minimal mocké + test réel optionnel (skipif 7z absent)
+```
+
+### Stratégie de test
+
+| Type | subprocess 7z | subprocess ocrmypdf | Requis en CI |
+|------|--------------|---------------------|--------------|
+| Unit (test_deps, test_pipeline_core, test_cli, test_watch) | Mocké | Mocké | Oui |
+| E2E mocké (test_cli_e2e — classe TestCliE2EMocked) | Mocké | Mocké | Oui |
+| E2E réel (test_cli_e2e — classe TestCliE2EReal) | Réel (7z système) | Non (--no-ocr) | Non (skipif) |
+
+Les tests "réels" sont automatiquement ignorés si `7z` est absent du PATH :
+
+```python
+@pytest.mark.skipif(
+    shutil.which("7z") is None and shutil.which("7za") is None,
+    reason="7z non disponible — test réel ignoré en CI",
+)
+```
+
+### Exécution
+
+```powershell
+# Windows PowerShell
+.\scripts\test_tools.ps1
+```
+
+```bash
+# Linux / macOS
+./scripts/test_tools.sh
+```
+
+```powershell
+# Manuel (depuis la racine avec venv tools/ activé)
+cd tools
+.\.venv\Scripts\Activate.ps1
+pytest -q ..\tests\tools\
+```
+
+### Ajout de nouveaux tests
+
+- **Tout appel à `subprocess.run`** (7z, ocrmypdf) doit être mocké via `mocker.patch("tools.cli.subprocess.run", ...)`.
+- **Tests de fonctions pures** (pipeline_core) : utiliser `tmp_path` pytest pour l'isolation FS.
+- **Tests "réels" optionnels** : décorer avec `@pytest.mark.skipif(shutil.which("7z") is None, ...)`.
+
+```
+
+
