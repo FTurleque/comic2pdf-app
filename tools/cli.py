@@ -40,7 +40,7 @@ from tools.pipeline_core import (
     validate_pdf,
     check_file_signature,
     ZipSlipError,
-    now_iso,
+    safe_replace,
 )
 
 # ---------------------------------------------------------------------------
@@ -262,18 +262,20 @@ def _step_ocr(raw_pdf: str, final_pdf: str, lang: str) -> None:
             pass
         _die("Le PDF produit par ocrmypdf est invalide ou trop petit.")
 
-    os.replace(tmp_pdf, final_pdf)
+    safe_replace(tmp_pdf, final_pdf)
 
 
 def _copy_atomic(src: str, dst: str) -> None:
     """Copie ``src`` vers ``dst`` de manière atomique (tmp + rename).
+
+    Utilise :func:`safe_replace` pour couvrir le cas cross-device sur Windows.
 
     :param src: Chemin source.
     :param dst: Chemin de destination.
     """
     tmp = dst + ".tmp"
     shutil.copy2(src, tmp)
-    os.replace(tmp, dst)
+    safe_replace(tmp, dst)
 
 
 def _die(message: str, code: int = EXIT_ERR) -> None:

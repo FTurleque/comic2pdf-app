@@ -17,10 +17,8 @@ import javafx.stage.FileChooser;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 /**
@@ -114,7 +112,7 @@ public class DuplicatesController {
 
     /**
      * Dépose un CBZ/CBR dans {@code data/in/}.
-     * Convention : copie en {@code .part} puis rename atomique.
+     * Délègue la logique filesystem à {@link com.comic2pdf.desktop.service.DuplicateService#depositFile}.
      */
     @FXML
     private void onDepositFile() {
@@ -126,15 +124,9 @@ public class DuplicatesController {
         File f = fc.showOpenDialog(dataDirField.getScene().getWindow());
         if (f == null) return;
 
-        Path inDir = resolve("in");
         try {
-            Files.createDirectories(inDir);
-            String name = f.getName();
-            Path part = inDir.resolve(name + ".part");
-            Path fin = inDir.resolve(name);
-            Files.copy(f.toPath(), part, StandardCopyOption.REPLACE_EXISTING);
-            Files.move(part, fin, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
+            Path fin = services.getDuplicateService()
+                    .depositFile(Paths.get(dataDirField.getText()), f.toPath());
             duplicatesStatusLabel.setText("Déposé : " + fin);
         } catch (IOException ex) {
             duplicatesStatusLabel.setText("Erreur dépôt : " + ex.getMessage());

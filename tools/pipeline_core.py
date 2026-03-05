@@ -10,7 +10,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -46,8 +45,28 @@ def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
+def safe_replace(src: str, dst: str) -> None:
+    """Renomme ``src`` vers ``dst`` de manière atomique, avec fallback cross-device.
+
+    Tente d'abord ``os.replace()`` (atomique sur même volume POSIX/Windows).
+    Si ``OSError`` est levée (ex : volumes différents sur Windows, partition réseau/SMB),
+    bascule sur ``shutil.move()`` qui gère le cas cross-device via copie + suppression.
+
+    :param src: Chemin source (fichier temporaire).
+    :param dst: Chemin de destination finale.
+    :raises OSError: Si le déplacement échoue même après le fallback shutil.
+    """
+    try:
+        os.replace(src, dst)
+    except OSError:
+        # Fallback cross-device : shutil.move gère copie + suppression de src
+        shutil.move(src, dst)
+
+
 def atomic_write_json(path: str, data: Dict[str, Any]) -> None:
     """Écrit ``data`` dans ``path`` de manière atomique (.tmp + rename).
+
+    Utilise :func:`safe_replace` pour couvrir le cas cross-device sur Windows.
 
     :param path: Chemin de destination du fichier JSON.
     :param data: Données à sérialiser.
@@ -55,7 +74,7 @@ def atomic_write_json(path: str, data: Dict[str, Any]) -> None:
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    safe_replace(tmp, path)
 
 
 def read_json(path: str) -> Optional[Dict[str, Any]]:
@@ -217,6 +236,8 @@ def list_and_sort_images(root: str) -> List[str]:
 def images_to_pdf(images: List[str], dest_path: str) -> None:
     """Convertit une liste d'images en PDF via img2pdf (écriture atomique).
 
+    Utilise :func:`safe_replace` pour couvrir le cas cross-device sur Windows.
+
     :param images: Liste ordonnée de chemins d'images.
     :param dest_path: Chemin de destination du PDF.
     :raises ImportError: Si img2pdf n'est pas installé.
@@ -231,7 +252,7 @@ def images_to_pdf(images: List[str], dest_path: str) -> None:
     try:
         with open(tmp_path, "wb") as f:
             f.write(_img2pdf.convert(images))
-        os.replace(tmp_path, dest_path)
+        safe_replace(tmp_path, dest_path)
     except Exception:
         try:
             os.remove(tmp_path)

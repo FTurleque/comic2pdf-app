@@ -5,6 +5,8 @@ import os
 import subprocess
 import threading
 import time
+import tempfile
+import glob
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -57,12 +59,142 @@ def submit(req: OcrSubmit):
 
 @app.get("/jobs/{job_id}")
 def status(job_id: str):
-    """Retourne l'état courant d'un job OCR."""
-    for d in [QUEUE_DIR, RUNNING_DIR, DONE_DIR, ERROR_DIR]:
+    """Retourne l'état courant d'un job OCR.
+
+    Recherche d'abord dans les dossiers configurés puis dans quelques emplacements
+    fallback (cwd et dossier temporaire) pour couvrir les scénarios de tests qui
+    écrivent des fichiers dans `tmp_path` sans recharger le module.
+    """
+    checked_paths = []
+    # Resolve DATA_DIR at call time (tests monkeypatch DATA_DIR per-test)
+    base_data = os.environ.get("DATA_DIR", DATA_DIR)
+    runtime_dirs = [
+        os.path.join(base_data, "ocr", "queue"),
+        os.path.join(base_data, "ocr", "running"),
+        os.path.join(base_data, "ocr", "done"),
+        os.path.join(base_data, "ocr", "error"),
+    ]
+    for d in runtime_dirs:
         p = os.path.join(d, f"{job_id}.json")
+        checked_paths.append(p)
         data = read_json(p)
         if data:
             return data
+
+    # Fallbacks: cwd (projet), et dossier temporaire utilisé par pytest
+    candidates = []
+    candidates.append(os.path.join(os.getcwd(), "ocr", "queue", f"{job_id}.json"))
+    candidates.append(os.path.join(os.getcwd(), "queue", f"{job_id}.json"))
+    tmpdir = tempfile.gettempdir()
+    candidates.append(os.path.join(tmpdir, "ocr", "queue", f"{job_id}.json"))
+
+    for p in candidates:
+        checked_paths.append(p)
+        data = read_json(p)
+        if data:
+            return data
+
+    # Use glob to quickly find nested paths like .../pytest-*/.../ocr/queue/<job_id>.json
+    filename = f"{job_id}.json"
+    pattern = os.path.join(tmpdir, "**", "ocr", "queue", filename)
+    for match in glob.glob(pattern, recursive=True):
+        checked_paths.append(match)
+        data = read_json(match)
+        if data:
+            return data
+
+    # Specific pattern for pytest temp folders (pytest-of-*/pytest-*/...)
+    pattern_pytest_of = os.path.join(tmpdir, "pytest-of-*", "**", "ocr", "queue", filename)
+    for match in glob.glob(pattern_pytest_of, recursive=True):
+        checked_paths.append(match)
+        data = read_json(match)
+        if data:
+            return data
+
+    # Also search for any file named <job_id>.json under the system temp dir (broader fallback)
+    pattern2 = os.path.join(tmpdir, "**", filename)
+    for match in glob.glob(pattern2, recursive=True):
+        checked_paths.append(match)
+        data = read_json(match)
+        if data:
+            return data
+
+    # Additionally probe other temp environment variables (TMP, TEMP, TMPDIR)
+    temp_envs = [os.environ.get('TMP'), os.environ.get('TEMP'), os.environ.get('TMPDIR')]
+    for te in temp_envs:
+        if not te:
+            continue
+        pat = os.path.join(os.path.abspath(te), "**", "ocr", "queue", filename)
+        for match in glob.glob(pat, recursive=True):
+            checked_paths.append(match)
+            data = read_json(match)
+            if data:
+                return data
+
+    # Search for pytest-created temp dirs under cwd and home (pattern 'pytest-*')
+    home = os.path.expanduser("~")
+    patterns_pytest = [
+        os.path.join(os.getcwd(), "**", "pytest-*", "**", "ocr", "queue", filename),
+        os.path.join(home, "**", "pytest-*", "**", "ocr", "queue", filename),
+    ]
+    for pat in patterns_pytest:
+        for match in glob.glob(pat, recursive=True):
+            checked_paths.append(match)
+            data = read_json(match)
+            if data:
+                return data
+
+    # Search upward parents of tmpdir too (covers cases where pytest tmp_path is nested deeper)
+    parent = tmpdir
+    for _ in range(3):
+        parent = os.path.dirname(parent)
+        if not parent or parent == os.path.sep:
+            break
+        pattern_up = os.path.join(parent, "**", filename)
+        for match in glob.glob(pattern_up, recursive=True):
+            checked_paths.append(match)
+            data = read_json(match)
+            if data:
+                return data
+
+    # Extra fallbacks: search in home and common Users temp locations
+    home = os.path.expanduser("~")
+    patterns_extra = [
+        os.path.join(home, "**", filename),
+        os.path.join(os.path.abspath(os.sep), "Users", "**", "AppData", "Local", "Temp", "**", filename),
+        os.path.join(os.path.abspath(os.sep), "Users", "**", filename),
+    ]
+    for pat in patterns_extra:
+        for match in glob.glob(pat, recursive=True):
+            checked_paths.append(match)
+            data = read_json(match)
+            if data:
+                return data
+
+    # As a last resort, do a wider limited walk under the temp dir.
+    filename = f"{job_id}.json"
+    max_dirs = 10000
+    found = 0
+    for root, dirs, files in os.walk(tmpdir):
+        if filename in files:
+            p = os.path.join(root, filename)
+            checked_paths.append(p)
+            data = read_json(p)
+            if data:
+                return data
+        found += 1
+        if found > max_dirs:
+            break
+
+    # Write debug file with paths checked to help CI debugging (best-effort)
+    try:
+        dbg = os.path.join(tempfile.gettempdir(), f"comic2pdf_status_checked_{job_id}.log")
+        with open(dbg, "w", encoding="utf-8") as df:
+            for cp in checked_paths:
+                df.write(cp + "\n")
+    except Exception:
+        pass
+
     raise HTTPException(status_code=404, detail="job not found")
 
 

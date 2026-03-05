@@ -9,7 +9,7 @@
 **Titre** : Implémentation Sprint 3 — Mode sans Docker (CLI et watch-folder local)
 **Type** : IMPLEMENTATION
 **Date** : 2026-03-04
-**Auteur(s)** : Équipe comic2pdf-app (soumission humaine requise)
+**Auteur(s)** : FTurleque (ex: FTurleque / @team-architecture)
 
 ---
 
@@ -102,10 +102,12 @@ $env:PYTHONPATH = (Resolve-Path "..").Path
 
 ## 6. Liens et références
 
-- PR : `[à renseigner lors de la soumission]`
+- PR : <PR_URL>  
 - Issue : `[à renseigner]`
 - Politique rapports IA : `.github/instructions/reports-docs.instructions.md`
 - Instructions Copilot : `.github/copilot-instructions.md`
+
+> Généré par IA — outil: Copilot. Soumis par: FTurleque. PR: <PR_URL>
 
 ---
 
@@ -123,4 +125,3 @@ Pour des questions sur ce rapport, ouvrir une issue dans le dépôt et taguer `@
 - [ ] Au moins 1 reviewer humain assigné
 - [x] Mention "Généré par IA" + outil/agent (GitHub Copilot)
 - [x] Sections minimales complètes (titre, date, auteur, résumé, étapes, fichiers modifiés, liens PR)
-
