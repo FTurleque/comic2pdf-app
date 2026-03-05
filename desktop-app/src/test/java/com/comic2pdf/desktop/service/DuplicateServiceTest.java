@@ -45,7 +45,7 @@ class DuplicateServiceTest {
         List<DupRow> rows = service.listDuplicates(dataDir);
 
         assertEquals(1, rows.size(), "Doit retourner 1 doublon");
-        DupRow row = rows.get(0);
+        DupRow row = rows.getFirst();
         assertEquals(jobKey, row.getJobKey());
         assertEquals("mon_comic.cbz", row.getIncomingFile());
         assertEquals("DONE", row.getExistingState());
@@ -73,12 +73,12 @@ class DuplicateServiceTest {
 
         List<DupRow> rows = service.listDuplicates(dataDir);
         assertEquals(1, rows.size());
-        assertEquals("good__key", rows.get(0).getJobKey());
+        assertEquals("good__key", rows.getFirst().getJobKey());
     }
 
     @Test
     @DisplayName("listDuplicates : crée le dossier reports/duplicates s'il est absent")
-    void listDuplicates_createsMissingDir(@TempDir Path dataDir) throws IOException {
+    void listDuplicates_createsMissingDir(@TempDir Path dataDir) {
         assertDoesNotThrow(() -> service.listDuplicates(dataDir));
         assertTrue(Files.exists(dataDir.resolve("reports").resolve("duplicates")));
     }
