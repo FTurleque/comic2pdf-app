@@ -111,38 +111,72 @@ Les services Python communiquent **uniquement** entre eux via HTTP interne (`PRE
 | Problème | Solution |
 |---|---|
 | `os.rename()` peut échouer si destination existe (Windows) | Utiliser `os.replace()` à la place |
+| `os.replace()` cross-device (volumes différents, Windows) | Utiliser `safe_replace()` de `tools/pipeline_core.py` |
 | Séparateur de chemin | Utiliser `pathlib.Path` en Python, `Path.of()` / `Paths.get()` en Java |
 | Rename atomique Java | `Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE)` |
+| `ATOMIC_MOVE` non supporté (FS réseau/SMB Windows) | Attraper `AtomicMoveNotSupportedException` et retenter avec `REPLACE_EXISTING` seul |
 | Fin de ligne | `.gitattributes` configure `text=auto` — ne pas forcer |
 | `chmod` / permissions | Ne pas utiliser dans le code partagé Windows/Linux |
 
-### Exemple Python
+### Exemple Python — `safe_replace` (modules `tools/` uniquement)
+
+```python
+from tools.pipeline_core import safe_replace
+
+# ✅ Correct — résistant aux volumes différents Windows (cross-device)
+tmp = dest + ".tmp"
+with open(tmp, "w") as f:
+    f.write(content)
+safe_replace(tmp, dest)
+# safe_replace tente os.replace() ; si OSError → bascule sur shutil.move()
+
+# ⚠️ Acceptable uniquement sur même volume, mais préférer safe_replace dans tools/
+os.replace(tmp, dest)
+```
+
+> **Note** : `safe_replace` est défini dans `tools/pipeline_core.py` et s'applique **uniquement**
+> aux modules `tools/`. Les services Docker (`services/`) s'exécutent sous Linux (même volume),
+> `os.replace()` y reste approprié.
+
+### Exemple Python — `os.replace` (services Docker)
 
 ```python
 import os
 from pathlib import Path
 
-# ✅ Correct (cross-platform)
+# ✅ Correct (cross-platform, même volume — services Docker uniquement)
 tmp = Path(dest).with_suffix(".tmp")
 tmp.write_text(content)
-os.replace(tmp, dest)  # atomique sur POSIX, best-effort sur Windows
+os.replace(tmp, dest)  # atomique sur POSIX, best-effort sur Windows même volume
 
 # ❌ Incorrect (Windows peut lever FileExistsError)
 os.rename(tmp, dest)
 ```
 
-### Exemple Java
+### Exemple Java — fallback `AtomicMoveNotSupportedException`
 
 ```java
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
-// ✅ Correct
-Files.move(tmpPath, destPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+// ✅ Correct — atomique avec fallback FS réseau/SMB
+Files.copy(source, part, StandardCopyOption.REPLACE_EXISTING);
+try {
+    Files.move(part, fin,
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING);
+} catch (AtomicMoveNotSupportedException ex) {
+    // Fallback : FS réseau/SMB Windows ne supportant pas ATOMIC_MOVE
+    Files.move(part, fin, StandardCopyOption.REPLACE_EXISTING);
+}
 
 // ❌ Incorrect (non atomique)
 tmpPath.toFile().renameTo(destPath.toFile());
 ```
+
+> **Règle** : tout `Files.move(..., ATOMIC_MOVE)` **doit** être entouré d'un
+> `catch (AtomicMoveNotSupportedException)` avec fallback `REPLACE_EXISTING`.
 
 ---
 

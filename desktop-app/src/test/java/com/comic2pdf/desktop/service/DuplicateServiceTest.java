@@ -45,7 +45,7 @@ class DuplicateServiceTest {
         List<DupRow> rows = service.listDuplicates(dataDir);
 
         assertEquals(1, rows.size(), "Doit retourner 1 doublon");
-        DupRow row = rows.get(0);
+        DupRow row = rows.getFirst();
         assertEquals(jobKey, row.getJobKey());
         assertEquals("mon_comic.cbz", row.getIncomingFile());
         assertEquals("DONE", row.getExistingState());
@@ -73,12 +73,12 @@ class DuplicateServiceTest {
 
         List<DupRow> rows = service.listDuplicates(dataDir);
         assertEquals(1, rows.size());
-        assertEquals("good__key", rows.get(0).getJobKey());
+        assertEquals("good__key", rows.getFirst().getJobKey());
     }
 
     @Test
     @DisplayName("listDuplicates : crée le dossier reports/duplicates s'il est absent")
-    void listDuplicates_createsMissingDir(@TempDir Path dataDir) throws IOException {
+    void listDuplicates_createsMissingDir(@TempDir Path dataDir) {
         assertDoesNotThrow(() -> service.listDuplicates(dataDir));
         assertTrue(Files.exists(dataDir.resolve("reports").resolve("duplicates")));
     }
@@ -147,6 +147,51 @@ class DuplicateServiceTest {
         String content = Files.readString(p);
         assertTrue(content.contains("USE_EXISTING_RESULT"));
         assertFalse(content.contains("nonce"));
+    }
+
+    // -------------------------------------------------------------------------
+    // depositFile
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("depositFile : dépose le fichier dans data/in/ et retourne le chemin final")
+    void depositFile_depositsFileInInDir(@TempDir Path dataDir) throws IOException {
+        Path source = dataDir.resolve("MonComic.cbz");
+        Files.writeString(source, "fake cbz content");
+
+        Path result = service.depositFile(dataDir, source);
+
+        Path expected = dataDir.resolve("in").resolve("MonComic.cbz");
+        assertEquals(expected.toAbsolutePath(), result.toAbsolutePath());
+        assertTrue(Files.exists(result), "Le fichier final doit exister dans data/in/");
+        assertFalse(Files.exists(dataDir.resolve("in").resolve("MonComic.cbz.part")),
+                "Le fichier .part ne doit plus exister après rename");
+    }
+
+    @Test
+    @DisplayName("depositFile : crée data/in/ s'il est absent")
+    void depositFile_createsInDirIfMissing(@TempDir Path dataDir) throws IOException {
+        Path source = dataDir.resolve("Comic.cbr");
+        Files.writeString(source, "fake cbr");
+        assertFalse(Files.exists(dataDir.resolve("in")), "data/in/ ne doit pas encore exister");
+
+        service.depositFile(dataDir, source);
+
+        assertTrue(Files.exists(dataDir.resolve("in")), "data/in/ doit avoir été créé");
+    }
+
+    @Test
+    @DisplayName("depositFile : le contenu du fichier déposé est identique à la source")
+    void depositFile_contentPreserved(@TempDir Path dataDir) throws IOException {
+        Path source = dataDir.resolve("Test.cbz");
+        String expected = "contenu_archive_cbz";
+        Files.writeString(source, expected);
+
+        Path result = service.depositFile(dataDir, source);
+
+        assertEquals(expected, Files.readString(result),
+                "Le contenu du fichier déposé doit être identique à la source");
+        assertEquals("Test.cbz", result.getFileName().toString());
     }
 }
 

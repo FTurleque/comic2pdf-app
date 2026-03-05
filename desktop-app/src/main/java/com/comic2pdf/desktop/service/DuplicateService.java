@@ -6,8 +6,10 @@ import com.comic2pdf.desktop.model.DupRow;
 import com.comic2pdf.desktop.model.DuplicateDecision;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -106,6 +108,36 @@ public class DuplicateService {
 
         mapper.writerWithDefaultPrettyPrinter().writeValue(decisionPath.toFile(), payload);
         return decisionPath;
+    }
+
+    /**
+     * Dépose un fichier CBZ/CBR dans {@code data/in/} via la convention {@code .part → rename}.
+     *
+     * <p>Copie d'abord le fichier source vers {@code <name>.part}, puis tente un rename atomique
+     * ({@code ATOMIC_MOVE}). Si le système de fichiers ne le supporte pas (ex : partage réseau
+     * SMB/CIFS Windows), bascule sur {@code REPLACE_EXISTING} seul (best-effort).</p>
+     *
+     * @param dataDir Racine du répertoire {@code data/}.
+     * @param source  Fichier source à déposer (.cbz ou .cbr).
+     * @return Chemin final du fichier déposé dans {@code data/in/}.
+     * @throws IOException En cas d'erreur de copie ou de rename.
+     */
+    public Path depositFile(Path dataDir, Path source) throws IOException {
+        Path inDir = dataDir.resolve("in");
+        Files.createDirectories(inDir);
+        String name = source.getFileName().toString();
+        Path part = inDir.resolve(name + ".part");
+        Path fin = inDir.resolve(name);
+        Files.copy(source, part, StandardCopyOption.REPLACE_EXISTING);
+        try {
+            Files.move(part, fin,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException ex) {
+            // Fallback : FS réseau/SMB Windows ne supportant pas ATOMIC_MOVE
+            Files.move(part, fin, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return fin;
     }
 }
 

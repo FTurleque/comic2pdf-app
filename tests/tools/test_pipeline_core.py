@@ -33,6 +33,7 @@ from tools.pipeline_core import (
     sha256_str,
     make_job_key,
     output_filename,
+    safe_replace,
 )
 
 
@@ -70,6 +71,52 @@ class TestAtomicWriteJson:
         atomic_write_json(p, {"new": True})
         with open(p, encoding="utf-8") as f:
             assert json.load(f) == {"new": True}
+
+
+# ---------------------------------------------------------------------------
+# safe_replace
+# ---------------------------------------------------------------------------
+
+class TestSafeReplace:
+    def test_deplace_fichier_meme_volume(self, tmp_path):
+        src = str(tmp_path / "src.txt")
+        dst = str(tmp_path / "dst.txt")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write("contenu")
+        safe_replace(src, dst)
+        assert not os.path.exists(src)
+        assert open(dst, encoding="utf-8").read() == "contenu"
+
+    def test_ecrase_destination_existante(self, tmp_path):
+        src = str(tmp_path / "src.txt")
+        dst = str(tmp_path / "dst.txt")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write("nouveau")
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write("ancien")
+        safe_replace(src, dst)
+        assert open(dst, encoding="utf-8").read() == "nouveau"
+
+    def test_fallback_cross_device_os_replace_echoue(self, tmp_path, mocker):
+        """Simule un OSError de os.replace (cross-device) et vérifie le fallback shutil.move."""
+        src = str(tmp_path / "src.txt")
+        dst = str(tmp_path / "dst.txt")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write("cross-device")
+        mocker.patch("tools.pipeline_core.os.replace", side_effect=OSError("cross-device simulé"))
+        mock_move = mocker.patch("tools.pipeline_core.shutil.move")
+        safe_replace(src, dst)
+        mock_move.assert_called_once_with(src, dst)
+
+    def test_pas_de_fallback_si_os_replace_reussit(self, tmp_path, mocker):
+        """Vérifie que shutil.move n'est PAS appelé si os.replace réussit."""
+        src = str(tmp_path / "src.txt")
+        dst = str(tmp_path / "dst.txt")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write("ok")
+        mock_move = mocker.patch("tools.pipeline_core.shutil.move")
+        safe_replace(src, dst)
+        mock_move.assert_not_called()
 
 
 class TestReadJson:
@@ -240,6 +287,32 @@ class TestSortImages:
         assert sort_images([]) == []
 
 
+class TestListAndSortImages:
+    def test_retourne_images_triees_naturellement(self, tmp_path):
+        (tmp_path / "10.jpg").write_bytes(b"x")
+        (tmp_path / "2.jpg").write_bytes(b"x")
+        (tmp_path / "1.jpg").write_bytes(b"x")
+        result = list_and_sort_images(str(tmp_path))
+        assert [os.path.basename(p) for p in result] == ["1.jpg", "2.jpg", "10.jpg"]
+
+    def test_exclut_fichiers_non_images(self, tmp_path):
+        (tmp_path / "p1.jpg").write_bytes(b"x")
+        (tmp_path / "notes.txt").write_bytes(b"x")
+        result = list_and_sort_images(str(tmp_path))
+        noms = [os.path.basename(p) for p in result]
+        assert "notes.txt" not in noms
+        assert "p1.jpg" in noms
+
+    def test_leve_zip_slip_si_chemin_externe(self, tmp_path, mocker):
+        """Vérifie que list_and_sort_images propage ZipSlipError."""
+        mocker.patch(
+            "tools.pipeline_core.check_zip_slip",
+            side_effect=ZipSlipError("zip-slip simulé"),
+        )
+        with pytest.raises(ZipSlipError):
+            list_and_sort_images(str(tmp_path))
+
+
 # ---------------------------------------------------------------------------
 # build_ocrmypdf_cmd
 # ---------------------------------------------------------------------------
@@ -268,6 +341,46 @@ class TestBuildOcrmypdfCmd:
         cmd = build_ocrmypdf_cmd("/a/in.pdf", "/b/out.pdf")
         assert cmd[-2] == "/a/in.pdf"
         assert cmd[-1] == "/b/out.pdf"
+
+
+# ---------------------------------------------------------------------------
+# stable_json / sha256_str
+# ---------------------------------------------------------------------------
+
+class TestStableJson:
+    def test_cles_triees_deterministe(self):
+        """Deux dicts avec les mêmes clés dans un ordre différent → même JSON."""
+        assert stable_json({"b": 2, "a": 1}) == stable_json({"a": 1, "b": 2})
+
+    def test_compact_sans_espaces(self):
+        result = stable_json({"k": "v"})
+        assert " " not in result
+
+    def test_unicode_preserve(self):
+        result = stable_json({"lang": "fra+eng"})
+        assert "fra+eng" in result
+
+    def test_dict_vide(self):
+        assert stable_json({}) == "{}"
+
+
+class TestSha256Str:
+    def test_hash_deterministe(self):
+        h1 = sha256_str("hello")
+        h2 = sha256_str("hello")
+        assert h1 == h2
+
+    def test_longueur_64_caracteres(self):
+        assert len(sha256_str("test")) == 64
+
+    def test_hash_different_pour_entrees_differentes(self):
+        assert sha256_str("aaa") != sha256_str("bbb")
+
+    def test_coherent_avec_hashlib(self):
+        """sha256_str doit produire le même hash que hashlib.sha256 directement."""
+        s = "comic2pdf"
+        expected = hashlib.sha256(s.encode("utf-8")).hexdigest()
+        assert sha256_str(s) == expected
 
 
 # ---------------------------------------------------------------------------

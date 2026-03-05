@@ -193,6 +193,96 @@ class TestNaturalKey:
 
 
 # ---------------------------------------------------------------------------
+# Tests list_images_recursive
+# ---------------------------------------------------------------------------
+
+class TestListImagesRecursive:
+    """Tests de la fonction list_images_recursive."""
+
+    def test_list_images_recursive_finds_images(self, tmp_path):
+        """list_images_recursive trouve toutes les images dans un dossier."""
+        from app.utils import list_images_recursive
+
+        (tmp_path / "img1.jpg").write_bytes(b"fake")
+        (tmp_path / "img2.png").write_bytes(b"fake")
+        (tmp_path / "doc.txt").write_text("not image")
+
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        (subdir / "img3.jpeg").write_bytes(b"fake")
+
+        result = list_images_recursive(str(tmp_path))
+
+        assert len(result) == 3
+        assert any("img1.jpg" in r for r in result)
+        assert any("img2.png" in r for r in result)
+        assert any("img3.jpeg" in r for r in result)
+        assert not any("doc.txt" in r for r in result)
+
+    def test_list_images_recursive_sorts_naturally(self, tmp_path):
+        """list_images_recursive trie naturellement les images."""
+        from app.utils import list_images_recursive
+
+        (tmp_path / "page10.jpg").touch()
+        (tmp_path / "page2.jpg").touch()
+        (tmp_path / "page1.jpg").touch()
+
+        result = list_images_recursive(str(tmp_path))
+
+        basenames = [os.path.basename(r) for r in result]
+        assert basenames == ["page1.jpg", "page2.jpg", "page10.jpg"]
+
+    def test_list_images_recursive_handles_all_extensions(self, tmp_path):
+        """list_images_recursive reconnaît toutes les extensions d'images."""
+        from app.utils import list_images_recursive
+
+        extensions = [".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"]
+        for i, ext in enumerate(extensions):
+            (tmp_path / f"img{i}{ext}").write_bytes(b"fake")
+
+        result = list_images_recursive(str(tmp_path))
+
+        assert len(result) == len(extensions)
+
+    def test_list_images_recursive_case_insensitive_extensions(self, tmp_path):
+        """list_images_recursive gère les extensions en majuscules."""
+        from app.utils import list_images_recursive
+
+        (tmp_path / "IMG1.JPG").write_bytes(b"fake")
+        (tmp_path / "IMG2.PNG").write_bytes(b"fake")
+
+        result = list_images_recursive(str(tmp_path))
+
+        assert len(result) == 2
+
+    def test_list_images_recursive_empty_directory(self, tmp_path):
+        """list_images_recursive retourne une liste vide pour un dossier vide."""
+        from app.utils import list_images_recursive
+
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        result = list_images_recursive(str(empty_dir))
+
+        assert result == []
+
+    def test_list_images_recursive_nested_directories(self, tmp_path):
+        """list_images_recursive parcourt les sous-dossiers récursivement."""
+        from app.utils import list_images_recursive
+
+        deep_dir = tmp_path / "a" / "b" / "c"
+        deep_dir.mkdir(parents=True)
+        (deep_dir / "deep.jpg").write_bytes(b"fake")
+        (tmp_path / "root.jpg").write_bytes(b"fake")
+
+        result = list_images_recursive(str(tmp_path))
+
+        assert len(result) == 2
+        assert any("deep.jpg" in r for r in result)
+        assert any("root.jpg" in r for r in result)
+
+
+# ---------------------------------------------------------------------------
 # Tests now_iso
 # ---------------------------------------------------------------------------
 
