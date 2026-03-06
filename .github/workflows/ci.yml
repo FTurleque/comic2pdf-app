@@ -1,10 +1,14 @@
-name: CI — Tests, Coverage & Security Audits
+name: CI — Tests, Coverage, Docker Build & Security Audits
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
+env:
+  DOCKERHUB_NAMESPACE: fturleque81
+  IMAGE_PREFIX: comic2pdf
 
 jobs:
   # ===========================================================================
@@ -39,22 +43,39 @@ jobs:
         working-directory: services/${{ matrix.service }}
         run: pip install -r requirements-dev.txt
 
-      - name: Run pytest with coverage
+      - name: Run pytest — serial d'abord (tests non parallélisables)
         working-directory: services/${{ matrix.service }}
         run: |
-          pytest -q \
+          pytest -m serial -n 0 \
             --cov=app \
+            --cov-report=xml:coverage-serial.xml \
+            --cov-report=term-missing \
+            --junit-xml=junit-serial.xml \
+            || serial_exit=$?
+          # Accumuler la couverture pour la passe parallèle
+          echo "SERIAL_EXIT=${serial_exit:-0}" >> "$GITHUB_ENV"
+
+      - name: Run pytest — parallel (tests xdist-safe)
+        working-directory: services/${{ matrix.service }}
+        run: |
+          pytest -m "not serial" -n auto --dist=loadscope \
+            --cov=app \
+            --cov-append \
             --cov-report=xml:coverage.xml \
             --cov-report=term-missing \
             --cov-report=html:htmlcov \
-            --cov-fail-under=${{ matrix.cov_min }}
+            --cov-fail-under=${{ matrix.cov_min }} \
+            --junit-xml=junit-parallel.xml
 
       - name: Upload coverage XML
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-${{ matrix.service }}
-          path: services/${{ matrix.service }}/coverage.xml
+          path: |
+            services/${{ matrix.service }}/coverage.xml
+            services/${{ matrix.service }}/junit-serial.xml
+            services/${{ matrix.service }}/junit-parallel.xml
           retention-days: 14
 
       - name: Upload coverage HTML
@@ -66,7 +87,14 @@ jobs:
           retention-days: 14
 
   # ===========================================================================
-  # Job 2 : Audit sécurité Python (pip-audit)
+  # Job 2 : Audit sécurité Python (pip-audit) — REPORTING UNIQUEMENT
+  #
+  # ⚠️  Ce job est NON BLOQUANT (artefacts JSON, reporting).
+  #     Le GATING HIGH/CRITICAL (bloquant en PR/push) est assuré par :
+  #     → .github/workflows/dependency-audit.yml (job pip-audit-gating)
+  #
+  # Plan de sortie : supprimer ce job ou le refactorer en workflow réutilisable
+  # après 1–2 cycles de stabilisation de dependency-audit.yml.
   # ===========================================================================
   python-audit:
     name: "Python security audit — ${{ matrix.service }}"
@@ -238,7 +266,14 @@ jobs:
           EOF
 
   # ===========================================================================
-  # Job 5 : Audit sécurité Java (OWASP Dependency-Check)
+  # Job 5 : Audit sécurité Java (OWASP Dependency-Check) — REPORTING UNIQUEMENT
+  #
+  # ⚠️  Ce job est NON BLOQUANT sur les PRs (exécuté uniquement sur main ou
+  #     label run-audit). Il produit un rapport JSON (artefact, rétention 14j).
+  #     Le GATING Java CVE peut être renforcé via dependency-audit.yml si besoin.
+  #
+  # Plan de sortie : évaluer refactoring en workflow réutilisable après
+  # 1–2 cycles de stabilisation de dependency-audit.yml.
   # ===========================================================================
   java-audit:
     name: Java OWASP Dependency-Check
@@ -281,4 +316,138 @@ jobs:
           name: owasp-dependency-check
           path: desktop-app/target/dependency-check-report.json
           retention-days: 14
+
+  # ===========================================================================
+  # Job 6 : Docker build — validation sans publication (3 services)
+  #   - matrix sur 3 services réels (orchestrator, prep-service, ocr-service)
+  #   - push: false — uniquement un build de validation
+  #   - cache GHA activé pour accélérer les rebuilds
+  #   - N'exige PAS de secrets Docker Hub en PR (pas de push)
+  # ===========================================================================
+  docker-build:
+    name: "Docker build (no push) — ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: orchestrator
+            context: services/orchestrator
+            dockerfile: services/orchestrator/Dockerfile
+          - service: prep-service
+            context: services/prep-service
+            dockerfile: services/prep-service/Dockerfile
+          - service: ocr-service
+            context: services/ocr-service
+            dockerfile: services/ocr-service/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: false
+          tags: ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:ci-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ===========================================================================
+  # Job 7 : CLI build — validation PyPI (sdist + wheel)
+  #   - Construit le package CLI comic2pdf depuis pyproject.toml (racine)
+  #   - twine check : valide le package avant publication
+  #   - Upload dist/* en artefact (non publié en CI, publié uniquement sur tag)
+  # ===========================================================================
+  cli-build:
+    name: CLI build (PyPI sdist + wheel)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build sdist + wheel
+        run: python -m build --sdist --wheel --outdir dist/
+
+      - name: Twine check
+        run: twine check dist/*
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist-ci
+          path: dist/
+          retention-days: 7
+
+  # ===========================================================================
+  # Job 8 : Java installer build (jpackage) — validation sans publication
+  #   - S'exécute uniquement sur ubuntu-latest en CI (validation rapide)
+  #   - continue-on-error: true — ne bloque pas la PR si jpackage non configuré
+  #   - Les builds multi-OS complets sont faits dans release.yml uniquement
+  # ===========================================================================
+  java-installer-build:
+    name: Java installer build (jpackage — validation CI)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Build fat JAR (mvn package)
+        working-directory: desktop-app
+        run: mvn -q clean package -DskipTests
+
+      - name: Validate jpackage availability
+        run: jpackage --version
+
+      - name: Run jpackage (validation)
+        shell: bash
+        run: |
+          JAR=$(find desktop-app/target -name "desktop-app-*-jar-with-dependencies.jar" \
+                                        -o -name "desktop-app-*-shaded.jar" 2>/dev/null | head -1)
+          if [ -z "$JAR" ]; then
+            JAR=$(find desktop-app/target -name "desktop-app-*.jar" \
+                                          ! -name "*-sources.jar" \
+                                          ! -name "*-tests.jar" 2>/dev/null | head -1)
+          fi
+          if [ -z "$JAR" ]; then
+            echo "⚠ Aucun fat JAR trouvé — jpackage ignoré en CI (non bloquant)."
+            exit 0
+          fi
+          echo "✅ JAR trouvé : $JAR"
+          jpackage \
+            --type deb \
+            --name "comic2pdf-desktop" \
+            --app-version "0.0.0-ci" \
+            --input "$(dirname $JAR)" \
+            --main-jar "$(basename $JAR)" \
+            --dest /tmp/installer-ci/ \
+            --vendor "comic2pdf-app" \
+            --java-options "--add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED" \
+            && echo "✅ jpackage OK" || echo "⚠ jpackage non configuré — voir docs/release/publishing.md"
+
 

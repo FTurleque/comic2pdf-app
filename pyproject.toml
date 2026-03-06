@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comic2pdf"
+version = "0.1.0"
+description = "Convertit des archives BD (CBZ/CBR) en PDF avec texte sélectionnable (OCR) — mode sans Docker"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+keywords = ["cbz", "cbr", "pdf", "ocr", "comics", "manga"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+    "Environment :: Console",
+]
+dependencies = [
+    "img2pdf",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "pillow",
+]
+
+[project.scripts]
+comic2pdf = "tools.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/fturleque81/comic2pdf-app"
+Repository = "https://github.com/fturleque81/comic2pdf-app"
+Issues = "https://github.com/fturleque81/comic2pdf-app/issues"
+
+[tool.setuptools.packages.find]
+# Inclut uniquement le package "tools" à la racine du dépôt
+where = ["."]
+include = ["tools*"]
+
+[tool.setuptools.package-data]
+tools = ["*.py"]
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+exclude = '''
+/(
+    \.venv
+  | venv
+  | \.git
+  | __pycache__
+  | \.pytest_cache
+  | build
+  | dist
+  | \.eggs
+)/
+'''
+
+[tool.pytest.ini_options]
+# Configuration pytest globale (conservée pour cohérence)
+testpaths = ["tests"]
+python_files = ["test_*.py"]

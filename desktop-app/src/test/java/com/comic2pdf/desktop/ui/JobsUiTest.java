@@ -8,7 +8,9 @@ import javafx.stage.Stage;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -21,6 +23,10 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>autoRefresh=false : aucun poll réseau réel, uniquement le clic sur
  * {@code #jobsRefreshBtn} déclenche la requête vers le stub.</p>
+ *
+ * <p>Stabilisation : l'attente de remplissage de la table utilise Awaitility
+ * ({@code await().atMost(5, SECONDS).untilAsserted(...)}) pour éviter toute
+ * attente fixe arbitraire et garantir un timeout borné.</p>
  */
 @Tag("ui")
 class JobsUiTest extends BaseUiTest {
@@ -73,18 +79,22 @@ class JobsUiTest extends BaseUiTest {
         // Cliquer le bouton Rafraîchir maintenant
         clickOn("#jobsRefreshBtn");
 
-        // Attendre la réponse HTTP + le Platform.runLater de updateTable (max 3s)
-        long deadline = System.currentTimeMillis() + 3_000;
-        TableView<?> table;
-        do {
-            WaitForAsyncUtils.waitForFxEvents();
-            WaitForAsyncUtils.sleep(100, java.util.concurrent.TimeUnit.MILLISECONDS);
-            table = lookup("#jobsTable").query();
-        } while (table.getItems().isEmpty() && System.currentTimeMillis() < deadline);
-
-        assertNotNull(table, "#jobsTable doit exister");
-        assertEquals(1, table.getItems().size(),
-                "1 job attendu dans la table après refresh manuel");
+        // Attendre la réponse HTTP + le Platform.runLater de updateTable.
+        // Awaitility interroge la condition toutes les 100 ms pendant 5 s max :
+        // - aucun sleep fixe arbitraire
+        // - déterministe : se termine dès que la condition est vraie
+        await()
+            .atMost(5, TimeUnit.SECONDS)
+            .pollInterval(100, TimeUnit.MILLISECONDS)
+            .untilAsserted(() -> {
+                WaitForAsyncUtils.waitForFxEvents();
+                TableView<?> table = lookup("#jobsTable").query();
+                assertNotNull(table, "#jobsTable doit exister");
+                assertEquals(1, table.getItems().size(),
+                        "1 job attendu dans la table après refresh manuel");
+            });
     }
 }
+
+
 

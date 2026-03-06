@@ -2,6 +2,7 @@
 Module core du prep-service.
 Contient les fonctions pures testables sans démarrer de serveur FastAPI.
 """
+
 import os
 import subprocess
 from typing import List
@@ -19,6 +20,7 @@ _PARASITE_DIRS = {"__macosx"}
 # ---------------------------------------------------------------------------
 # Sécurité — protection zip-slip post-extraction
 # ---------------------------------------------------------------------------
+
 
 class ZipSlipError(Exception):
     """
@@ -71,9 +73,7 @@ def filter_images(root: str) -> List[str]:
     out: List[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
         # Ignorer les dossiers parasites (en place pour éviter de descendre dedans)
-        dirnames[:] = [
-            d for d in dirnames if d.lower() not in _PARASITE_DIRS
-        ]
+        dirnames[:] = [d for d in dirnames if d.lower() not in _PARASITE_DIRS]
         for fn in filenames:
             if fn.lower() in _PARASITES:
                 continue
@@ -92,6 +92,7 @@ def sort_images(paths: List[str]) -> List[str]:
     :return: Nouvelle liste triée.
     """
     from app.utils import natural_key
+
     return sorted(paths, key=lambda p: natural_key(os.path.basename(p)))
 
 
@@ -151,4 +152,3 @@ def get_tool_versions() -> dict:
         out["7z"] = "unknown"
     out["img2pdf"] = getattr(img2pdf, "__version__", "unknown")
     return out
-

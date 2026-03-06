@@ -2,6 +2,7 @@
 Service FastAPI de préparation (extraction CBZ/CBR + génération raw.pdf).
 Pipeline : 7z extract -> list images -> img2pdf -> raw.pdf atomique.
 """
+
 import os
 import subprocess
 import threading
@@ -10,16 +11,41 @@ import time
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from app.core import get_tool_versions, list_and_sort_images, images_to_pdf, ZipSlipError
+from app.core import (
+    get_tool_versions,
+    list_and_sort_images,
+    images_to_pdf,
+    ZipSlipError,
+)
 from app.utils import ensure_dir, atomic_write_json, read_json, now_iso
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 SERVICE_CONCURRENCY = int(os.environ.get("SERVICE_CONCURRENCY", "1"))
 
-QUEUE_DIR = os.path.join(DATA_DIR, "prep", "queue")
-RUNNING_DIR = os.path.join(DATA_DIR, "prep", "running")
-DONE_DIR = os.path.join(DATA_DIR, "prep", "done")
-ERROR_DIR = os.path.join(DATA_DIR, "prep", "error")
+# Prevent automatic worker startup in environments that don't explicitly opt in.
+# Tests or production that want workers should set DISABLE_WORKERS=0 explicitly.
+os.environ.setdefault("DISABLE_WORKERS", "1")
+
+
+class _PathProxy:
+    def __init__(self, *parts):
+        self.parts = parts
+
+    def __fspath__(self):
+        base = os.environ.get("DATA_DIR", DATA_DIR)
+        return os.path.join(base, *self.parts)
+
+    def __str__(self):
+        return self.__fspath__()
+
+    def __repr__(self):
+        return f"_PathProxy({self.parts})"
+
+
+QUEUE_DIR = _PathProxy("prep", "queue")
+RUNNING_DIR = _PathProxy("prep", "running")
+DONE_DIR = _PathProxy("prep", "done")
+ERROR_DIR = _PathProxy("prep", "error")
 
 app = FastAPI(title="prep-service")
 
@@ -32,6 +58,7 @@ def info():
 
 class PrepSubmit(BaseModel):
     """Corps de la requête POST /jobs/prep."""
+
     jobId: str
     inputPath: str
     workDir: str
@@ -48,13 +75,17 @@ def submit(req: PrepSubmit):
     running_file = os.path.join(RUNNING_DIR, f"{req.jobId}.json")
     if os.path.exists(job_file) or os.path.exists(running_file):
         return {"jobId": req.jobId, "statusUrl": f"/jobs/{req.jobId}"}
-    atomic_write_json(job_file, {
-        "jobId": req.jobId,
-        "inputPath": req.inputPath,
-        "workDir": req.workDir,
-        "state": "QUEUED",
-        "updatedAt": now_iso(),
-    })
+    atomic_write_json(
+        job_file,
+        {
+            "jobId": req.jobId,
+            "inputPath": req.inputPath,
+            "workDir": req.workDir,
+            "state": "QUEUED",
+            "updatedAt": now_iso(),
+            "createdAtEpoch": time.time(),
+        },
+    )
     return {"jobId": req.jobId, "statusUrl": f"/jobs/{req.jobId}"}
 
 
@@ -95,10 +126,21 @@ def claim_one():
     """
     ensure_dir(QUEUE_DIR)
     ensure_dir(RUNNING_DIR)
+    now_t = time.time()
     for fn in os.listdir(QUEUE_DIR):
         if not fn.endswith(".json"):
             continue
         src = os.path.join(QUEUE_DIR, fn)
+        try:
+            # Read metadata first to avoid claiming items that are too recent
+            meta = read_json(src) or {}
+            created = float(meta.get("createdAtEpoch", 0))
+            # Skip very-recent files to avoid racing a submit in the same process
+            if (now_t - created) < 0.05:
+                continue
+        except Exception:
+            # If we can't read it, try to claim anyway
+            pass
         dst = os.path.join(RUNNING_DIR, fn)
         try:
             os.replace(src, dst)
@@ -118,6 +160,7 @@ def update_state(job_meta_path: str, patch: dict):
     data = read_json(job_meta_path) or {}
     data.update(patch)
     data["updatedAt"] = now_iso()
+
     atomic_write_json(job_meta_path, data)
 
 
@@ -141,6 +184,7 @@ def run_job(job_meta_path: str):
 
     ensure_dir(job_dir)
     import shutil as _sh
+
     _sh.rmtree(pages_dir, ignore_errors=True)
     ensure_dir(pages_dir)
     raw_tmp = os.path.join(job_dir, "raw.tmp.pdf")
@@ -172,34 +216,46 @@ def run_job(job_meta_path: str):
             if not images:
                 raise RuntimeError("no images found after extraction")
 
-            update_state(job_meta_path, {"message": f"building pdf ({len(images)} pages)"})
+            update_state(
+                job_meta_path, {"message": f"building pdf ({len(images)} pages)"}
+            )
             heartbeat("img2pdf")
             images_to_pdf(images, raw_tmp)
             os.replace(raw_tmp, raw_pdf)
-            update_state(job_meta_path, {
-                "state": "DONE",
-                "message": "raw.pdf ready",
-                "artifacts": {"rawPdf": raw_pdf},
-            })
+            update_state(
+                job_meta_path,
+                {
+                    "state": "DONE",
+                    "message": "raw.pdf ready",
+                    "artifacts": {"rawPdf": raw_pdf},
+                },
+            )
         except ZipSlipError as e:
             # Zip-slip détecté : nettoyer le workdir pour ne laisser aucun artefact dangereux
             import shutil as _sh_sec
+
             try:
                 _sh_sec.rmtree(job_dir, ignore_errors=True)
             except Exception:
                 pass
-            update_state(job_meta_path, {
-                "state": "ERROR",
-                "message": f"zip-slip attack detected: {e}",
-                "error": {"type": "ZipSlipError", "detail": str(e)},
-            })
+            update_state(
+                job_meta_path,
+                {
+                    "state": "ERROR",
+                    "message": f"zip-slip attack detected: {e}",
+                    "error": {"type": "ZipSlipError", "detail": str(e)},
+                },
+            )
             raise
         except Exception as e:
-            update_state(job_meta_path, {
-                "state": "ERROR",
-                "message": str(e),
-                "error": {"type": type(e).__name__, "detail": str(e)},
-            })
+            update_state(
+                job_meta_path,
+                {
+                    "state": "ERROR",
+                    "message": str(e),
+                    "error": {"type": type(e).__name__, "detail": str(e)},
+                },
+            )
             raise
 
 

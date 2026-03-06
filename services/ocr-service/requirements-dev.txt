@@ -2,5 +2,8 @@
 pytest
 pytest-cov
 pytest-mock
+pytest-xdist
 httpx
 pip-audit
+black
+flake8

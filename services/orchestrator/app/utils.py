@@ -1,10 +1,10 @@
 import os, json, time, hashlib, re, shutil
 from typing import Any, Dict, Optional, List, Set
 
-
 # ---------------------------------------------------------------------------
 # Sécurité — protection path traversal
 # ---------------------------------------------------------------------------
+
 
 def safe_path(base_dir: str, user_path: str) -> str:
     """
@@ -20,9 +20,7 @@ def safe_path(base_dir: str, user_path: str) -> str:
     real_path = os.path.realpath(os.path.abspath(user_path))
     # Le chemin doit commencer par base_dir + séparateur (ou être base_dir lui-même)
     if real_path != real_base and not real_path.startswith(real_base + os.sep):
-        raise ValueError(
-            f"Path traversal détecté : '{user_path}' sort de '{base_dir}'"
-        )
+        raise ValueError(f"Path traversal détecté : '{user_path}' sort de '{base_dir}'")
     return real_path
 
 
@@ -30,8 +28,10 @@ def safe_path(base_dir: str, user_path: str) -> str:
 # Fonctions existantes (inchangées)
 # ---------------------------------------------------------------------------
 
+
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
+
 
 def atomic_write_json(path: str, data: Dict[str, Any]) -> None:
     tmp = path + ".tmp"
@@ -39,11 +39,13 @@ def atomic_write_json(path: str, data: Dict[str, Any]) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
 
+
 def read_json(path: str) -> Optional[Dict[str, Any]]:
     if not os.path.exists(path):
         return None
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 def sha256_file(path: str, chunk_size: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
@@ -55,13 +57,16 @@ def sha256_file(path: str, chunk_size: int = 1024 * 1024) -> str:
             h.update(b)
     return h.hexdigest()
 
+
 _num_re = re.compile(r"(\d+)")
+
 
 def natural_key(s: str):
     return [int(text) if text.isdigit() else text.lower() for text in _num_re.split(s)]
 
+
 def list_images_recursive(root: str) -> List[str]:
-    exts = {".jpg",".jpeg",".png",".webp",".tif",".tiff",".bmp"}
+    exts = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}
     out = []
     for dirpath, _, filenames in os.walk(root):
         for fn in filenames:
@@ -71,6 +76,7 @@ def list_images_recursive(root: str) -> List[str]:
     out.sort(key=lambda p: natural_key(os.path.basename(p)))
     return out
 
+
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -78,6 +84,7 @@ def now_iso() -> str:
 # ---------------------------------------------------------------------------
 # B2 — Validation PDF
 # ---------------------------------------------------------------------------
+
 
 def validate_pdf(path: str, min_size_bytes: int = 1024) -> bool:
     """
@@ -103,6 +110,7 @@ def validate_pdf(path: str, min_size_bytes: int = 1024) -> bool:
 # B4 — Vérification espace disque
 # ---------------------------------------------------------------------------
 
+
 def check_disk_space(work_dir: str, input_size_bytes: int, factor: float = 2.0) -> bool:
     """
     Vérifie qu'il y a suffisamment d'espace disque libre pour traiter un fichier.
@@ -125,7 +133,10 @@ def check_disk_space(work_dir: str, input_size_bytes: int, factor: float = 2.0) 
 # B5 — Nettoyage des workdirs anciens
 # ---------------------------------------------------------------------------
 
-def cleanup_old_workdirs(work_dir: str, keep_days: int, running_job_keys: Set[str]) -> int:
+
+def cleanup_old_workdirs(
+    work_dir: str, keep_days: int, running_job_keys: Set[str]
+) -> int:
     """
     Supprime les sous-dossiers de ``work_dir`` plus anciens que ``keep_days`` jours,
     en ignorant ceux dont la clé est dans ``running_job_keys``.
@@ -161,6 +172,7 @@ def cleanup_old_workdirs(work_dir: str, keep_days: int, running_job_keys: Set[st
 # E1 — Vérification taille fichier entrant
 # ---------------------------------------------------------------------------
 
+
 def check_input_size(path: str, max_mb: float = 500.0) -> bool:
     """
     Vérifie que la taille du fichier d'entrée ne dépasse pas le maximum autorisé.
@@ -181,9 +193,9 @@ def check_input_size(path: str, max_mb: float = 500.0) -> bool:
 # ---------------------------------------------------------------------------
 
 # Signatures magiques connues pour CBZ (ZIP) et CBR (RAR4 + RAR5)
-_MAGIC_ZIP  = b"\x50\x4B\x03\x04"           # ZIP : 50 4B 03 04
-_MAGIC_RAR4 = b"\x52\x61\x72\x21\x1A\x07\x00"      # RAR4 : 52 61 72 21 1A 07 00
-_MAGIC_RAR5 = b"\x52\x61\x72\x21\x1A\x07\x01\x00"  # RAR5 : 52 61 72 21 1A 07 01 00
+_MAGIC_ZIP = b"\x50\x4b\x03\x04"  # ZIP : 50 4B 03 04
+_MAGIC_RAR4 = b"\x52\x61\x72\x21\x1a\x07\x00"  # RAR4 : 52 61 72 21 1A 07 00
+_MAGIC_RAR5 = b"\x52\x61\x72\x21\x1a\x07\x01\x00"  # RAR5 : 52 61 72 21 1A 07 01 00
 
 
 def check_file_signature(path: str) -> bool:

@@ -4,6 +4,7 @@ Pipeline : découverte -> PREP -> OCR -> archivage.
 Gère la déduplication, les retries (MAX_ATTEMPTS par étape),
 la détection de heartbeats périmés et les métriques basiques.
 """
+
 import os
 import time
 import shutil
@@ -79,10 +80,19 @@ ORCHESTRATOR_HTTP_BIND = os.environ.get("ORCHESTRATOR_HTTP_BIND", "0.0.0.0")
 # Helpers filesystem
 # ---------------------------------------------------------------------------
 
+
 def ensure_layout():
     """Crée tous les répertoires de données nécessaires."""
-    for d in [IN_DIR, OUT_DIR, WORK_DIR, ERROR_DIR, ARCHIVE_DIR,
-              HOLD_DUP_DIR, DUP_REPORTS_DIR, INDEX_DIR]:
+    for d in [
+        IN_DIR,
+        OUT_DIR,
+        WORK_DIR,
+        ERROR_DIR,
+        ARCHIVE_DIR,
+        HOLD_DUP_DIR,
+        DUP_REPORTS_DIR,
+        INDEX_DIR,
+    ]:
         ensure_dir(d)
 
 
@@ -184,7 +194,10 @@ def discover_inputs():
 # Doublons
 # ---------------------------------------------------------------------------
 
-def write_duplicate_report(job_key: str, incoming_path: str, existing: dict, profile: dict):
+
+def write_duplicate_report(
+    job_key: str, incoming_path: str, existing: dict, profile: dict
+):
     """
     Déplace le fichier entrant dans hold/duplicates et crée le rapport JSON.
 
@@ -246,7 +259,11 @@ def check_duplicate_decisions(index: dict, index_path: str):
         if action == "USE_EXISTING_RESULT" and existing and existing.get("outPdf"):
             try:
                 out_pdf = output_path_for(
-                    os.path.basename(held_file_path) if held_file_path else "duplicate.cbz",
+                    (
+                        os.path.basename(held_file_path)
+                        if held_file_path
+                        else "duplicate.cbz"
+                    ),
                     job_key,
                 )
                 ensure_dir(OUT_DIR)
@@ -256,7 +273,10 @@ def check_duplicate_decisions(index: dict, index_path: str):
                 pass
             if held_file_path:
                 ensure_dir(ARCHIVE_DIR)
-                move_atomic(held_file_path, os.path.join(ARCHIVE_DIR, os.path.basename(held_file_path)))
+                move_atomic(
+                    held_file_path,
+                    os.path.join(ARCHIVE_DIR, os.path.basename(held_file_path)),
+                )
         elif action == "DISCARD":
             if held_file_path:
                 os.remove(held_file_path)
@@ -271,9 +291,11 @@ def check_duplicate_decisions(index: dict, index_path: str):
                 move_atomic(held_file_path, os.path.join(IN_DIR, new_name))
 
         # Nettoyage
-        for p in [decision_path,
-                  os.path.join(DUP_REPORTS_DIR, f"{job_key}.json"),
-                  os.path.join(job_hold, "status.json")]:
+        for p in [
+            decision_path,
+            os.path.join(DUP_REPORTS_DIR, f"{job_key}.json"),
+            os.path.join(job_hold, "status.json"),
+        ]:
             try:
                 os.remove(p)
             except FileNotFoundError:
@@ -288,6 +310,7 @@ def check_duplicate_decisions(index: dict, index_path: str):
 # ---------------------------------------------------------------------------
 # Soumission + polling HTTP
 # ---------------------------------------------------------------------------
+
 
 def submit_prep(job_key: str, input_path: str):
     """
@@ -350,6 +373,7 @@ def poll_job(url: str, job_key: str) -> dict:
 # Heartbeat-check
 # ---------------------------------------------------------------------------
 
+
 def check_stale_jobs(in_flight: dict, timeout_s: int):
     """
     Vérifie les heartbeats des jobs en cours d'exécution.
@@ -365,18 +389,24 @@ def check_stale_jobs(in_flight: dict, timeout_s: int):
         if stage == "PREP_RUNNING":
             hb_path = os.path.join(WORK_DIR, job_key, "prep.heartbeat")
             if is_heartbeat_stale(hb_path, timeout_s):
-                update_state(job_key, {
-                    "state": "PREP_TIMEOUT",
-                    "message": f"heartbeat stale after {timeout_s}s",
-                })
+                update_state(
+                    job_key,
+                    {
+                        "state": "PREP_TIMEOUT",
+                        "message": f"heartbeat stale after {timeout_s}s",
+                    },
+                )
                 meta["stage"] = "PREP_RETRY"
         elif stage == "OCR_RUNNING":
             hb_path = os.path.join(WORK_DIR, job_key, "ocr.heartbeat")
             if is_heartbeat_stale(hb_path, timeout_s):
-                update_state(job_key, {
-                    "state": "OCR_TIMEOUT",
-                    "message": f"heartbeat stale after {timeout_s}s",
-                })
+                update_state(
+                    job_key,
+                    {
+                        "state": "OCR_TIMEOUT",
+                        "message": f"heartbeat stale after {timeout_s}s",
+                    },
+                )
                 meta["stage"] = "OCR_RETRY"
 
 
@@ -384,7 +414,10 @@ def check_stale_jobs(in_flight: dict, timeout_s: int):
 # Tick (logique principale d'un cycle, sans sleep — testable unitairement)
 # ---------------------------------------------------------------------------
 
-def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, config: dict):
+
+def process_tick(
+    in_flight: dict, index: dict, index_path: str, profile: dict, config: dict
+):
     """
     Exécute un cycle complet de l'orchestrateur :
     1. Décisions doublons
@@ -415,7 +448,9 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
         for src in list(discover_inputs()):
             ts = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
             original_name = os.path.basename(src)
-            staging_path = os.path.join(config["work_dir"], "_staging", ts + "_" + original_name)
+            staging_path = os.path.join(
+                config["work_dir"], "_staging", ts + "_" + original_name
+            )
             ensure_dir(os.path.dirname(staging_path))
             try:
                 move_atomic(src, staging_path)
@@ -423,8 +458,12 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
                 continue
 
             # E1 — Vérification taille fichier
-            if not check_input_size(staging_path, config.get("max_input_size_mb", MAX_INPUT_SIZE_MB)):
-                _log.warning("Fichier trop grand, rejeté", extra={"stage": "INPUT_CHECK"})
+            if not check_input_size(
+                staging_path, config.get("max_input_size_mb", MAX_INPUT_SIZE_MB)
+            ):
+                _log.warning(
+                    "Fichier trop grand, rejeté", extra={"stage": "INPUT_CHECK"}
+                )
                 err_dst = os.path.join(ERROR_DIR, os.path.basename(staging_path))
                 try:
                     move_atomic(staging_path, err_dst)
@@ -435,7 +474,9 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
 
             # E2 — Vérification signature ZIP/RAR
             if not check_file_signature(staging_path):
-                _log.warning("Signature invalide, rejeté", extra={"stage": "INPUT_CHECK"})
+                _log.warning(
+                    "Signature invalide, rejeté", extra={"stage": "INPUT_CHECK"}
+                )
                 err_dst = os.path.join(ERROR_DIR, os.path.basename(staging_path))
                 try:
                     move_atomic(staging_path, err_dst)
@@ -449,7 +490,11 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
 
             # B4 — Vérification espace disque avant PREP
             input_size = os.path.getsize(staging_path)
-            if not check_disk_space(config["work_dir"], input_size, config.get("disk_free_factor", DISK_FREE_FACTOR)):
+            if not check_disk_space(
+                config["work_dir"],
+                input_size,
+                config.get("disk_free_factor", DISK_FREE_FACTOR),
+            ):
                 _log.error("Espace disque insuffisant", extra={"stage": "DISK_CHECK"})
                 err_dst = os.path.join(ERROR_DIR, os.path.basename(staging_path))
                 try:
@@ -470,13 +515,16 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
             move_atomic(staging_path, input_path)
 
             profile_hash, _ = make_job_key(file_hash, profile)
-            update_state(job_key, {
-                "state": "DISCOVERED",
-                "profile": profile,
-                "fileHash": file_hash,
-                "profileHash": profile_hash,
-                "input": {"name": original_name, "path": input_path},
-            })
+            update_state(
+                job_key,
+                {
+                    "state": "DISCOVERED",
+                    "profile": profile,
+                    "fileHash": file_hash,
+                    "profileHash": profile_hash,
+                    "input": {"name": original_name, "path": input_path},
+                },
+            )
             index["jobs"][job_key] = {
                 "jobKey": job_key,
                 "state": "DISCOVERED",
@@ -503,18 +551,35 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
             break
         if meta["stage"] in ("DISCOVERED", "PREP_RETRY"):
             if meta["attemptPrep"] >= config["max_attempts_prep"]:
-                update_state(job_key, {"state": "ERROR", "step": "PREP", "message": "max attempts reached"})
+                update_state(
+                    job_key,
+                    {
+                        "state": "ERROR",
+                        "step": "PREP",
+                        "message": "max attempts reached",
+                    },
+                )
                 index["jobs"][job_key]["state"] = "ERROR_PREP"
                 save_index(index, index_path)
                 try:
-                    move_atomic(meta["inputPath"], os.path.join(ERROR_DIR, os.path.basename(meta["inputPath"])))
+                    move_atomic(
+                        meta["inputPath"],
+                        os.path.join(ERROR_DIR, os.path.basename(meta["inputPath"])),
+                    )
                 except Exception:
                     pass
                 del in_flight[job_key]
                 update_metrics(metrics, "error")
                 continue
             meta["attemptPrep"] += 1
-            update_state(job_key, {"state": "PREP_SUBMITTED", "step": "PREP", "attempt": meta["attemptPrep"]})
+            update_state(
+                job_key,
+                {
+                    "state": "PREP_SUBMITTED",
+                    "step": "PREP",
+                    "attempt": meta["attemptPrep"],
+                },
+            )
             try:
                 submit_prep(job_key, meta["inputPath"])
                 meta["stage"] = "PREP_RUNNING"
@@ -523,7 +588,9 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
                 update_metrics(metrics, "running")
                 can_start_prep -= 1
             except Exception as e:
-                update_state(job_key, {"state": "ERROR", "step": "PREP", "message": str(e)})
+                update_state(
+                    job_key, {"state": "ERROR", "step": "PREP", "message": str(e)}
+                )
                 meta["stage"] = "PREP_RETRY"
 
     # -- Polling PREP --
@@ -533,14 +600,25 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
         try:
             st = poll_job(config["prep_url"], job_key)
             if st.get("state") == "DONE":
-                raw_pdf = st.get("artifacts", {}).get("rawPdf") or os.path.join(job_dir(job_key), "raw.pdf")
-                update_state(job_key, {"state": "PREP_DONE", "step": "PREP", "rawPdf": raw_pdf})
+                raw_pdf = st.get("artifacts", {}).get("rawPdf") or os.path.join(
+                    job_dir(job_key), "raw.pdf"
+                )
+                update_state(
+                    job_key, {"state": "PREP_DONE", "step": "PREP", "rawPdf": raw_pdf}
+                )
                 meta["rawPdf"] = raw_pdf
                 meta["stage"] = "PREP_DONE"
                 index["jobs"][job_key]["state"] = "PREP_DONE"
                 save_index(index, index_path)
             elif st.get("state") == "ERROR":
-                update_state(job_key, {"state": "PREP_ERROR", "step": "PREP", "message": st.get("message")})
+                update_state(
+                    job_key,
+                    {
+                        "state": "PREP_ERROR",
+                        "step": "PREP",
+                        "message": st.get("message"),
+                    },
+                )
                 meta["stage"] = "PREP_RETRY"
         except Exception:
             pass
@@ -553,7 +631,14 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
             break
         if meta["stage"] in ("PREP_DONE", "OCR_RETRY"):
             if meta["attemptOcr"] >= config["max_attempts_ocr"]:
-                update_state(job_key, {"state": "ERROR", "step": "OCR", "message": "max attempts reached"})
+                update_state(
+                    job_key,
+                    {
+                        "state": "ERROR",
+                        "step": "OCR",
+                        "message": "max attempts reached",
+                    },
+                )
                 index["jobs"][job_key]["state"] = "ERROR_OCR"
                 save_index(index, index_path)
                 del in_flight[job_key]
@@ -561,7 +646,15 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
                 continue
             meta["attemptOcr"] += 1
             raw_pdf = meta.get("rawPdf") or os.path.join(job_dir(job_key), "raw.pdf")
-            update_state(job_key, {"state": "OCR_SUBMITTED", "step": "OCR", "attempt": meta["attemptOcr"], "rawPdf": raw_pdf})
+            update_state(
+                job_key,
+                {
+                    "state": "OCR_SUBMITTED",
+                    "step": "OCR",
+                    "attempt": meta["attemptOcr"],
+                    "rawPdf": raw_pdf,
+                },
+            )
             try:
                 submit_ocr(job_key, raw_pdf)
                 meta["stage"] = "OCR_RUNNING"
@@ -569,7 +662,9 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
                 save_index(index, index_path)
                 can_start_ocr -= 1
             except Exception as e:
-                update_state(job_key, {"state": "ERROR", "step": "OCR", "message": str(e)})
+                update_state(
+                    job_key, {"state": "ERROR", "step": "OCR", "message": str(e)}
+                )
                 meta["stage"] = "OCR_RETRY"
 
     # -- Polling OCR + finalisation --
@@ -579,13 +674,21 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
         try:
             st = poll_job(config["ocr_url"], job_key)
             if st.get("state") == "DONE":
-                final_pdf = st.get("artifacts", {}).get("finalPdf") or os.path.join(job_dir(job_key), "final.pdf")
+                final_pdf = st.get("artifacts", {}).get("finalPdf") or os.path.join(
+                    job_dir(job_key), "final.pdf"
+                )
 
                 # B3 — Validation PDF avant move vers /out
                 min_pdf = config.get("min_pdf_size_bytes", MIN_PDF_SIZE_BYTES)
                 if not validate_pdf(final_pdf, min_size_bytes=min_pdf):
-                    _log.error("PDF final invalide", extra={"jobKey": job_key, "stage": "OCR_FINALIZE"})
-                    update_state(job_key, {"state": "OCR_ERROR", "step": "OCR", "message": "pdf_invalid"})
+                    _log.error(
+                        "PDF final invalide",
+                        extra={"jobKey": job_key, "stage": "OCR_FINALIZE"},
+                    )
+                    update_state(
+                        job_key,
+                        {"state": "OCR_ERROR", "step": "OCR", "message": "pdf_invalid"},
+                    )
                     meta["stage"] = "OCR_RETRY"
                     update_metrics(metrics, "pdf_invalid")
                     continue
@@ -594,7 +697,9 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
                 ensure_dir(OUT_DIR)
                 move_atomic(final_pdf, out_pdf)
                 _log.info("Job terminé", extra={"jobKey": job_key, "stage": "DONE"})
-                update_state(job_key, {"state": "DONE", "step": "OCR", "finalPdf": out_pdf})
+                update_state(
+                    job_key, {"state": "DONE", "step": "OCR", "finalPdf": out_pdf}
+                )
                 index["jobs"][job_key]["state"] = "DONE"
                 index["jobs"][job_key]["outPdf"] = out_pdf
                 save_index(index, index_path)
@@ -609,13 +714,19 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
 
                 try:
                     ensure_dir(ARCHIVE_DIR)
-                    move_atomic(meta["inputPath"], os.path.join(ARCHIVE_DIR, os.path.basename(meta["inputPath"])))
+                    move_atomic(
+                        meta["inputPath"],
+                        os.path.join(ARCHIVE_DIR, os.path.basename(meta["inputPath"])),
+                    )
                 except Exception:
                     pass
                 del in_flight[job_key]
                 update_metrics(metrics, "done")
             elif st.get("state") == "ERROR":
-                update_state(job_key, {"state": "OCR_ERROR", "step": "OCR", "message": st.get("message")})
+                update_state(
+                    job_key,
+                    {"state": "OCR_ERROR", "step": "OCR", "message": st.get("message")},
+                )
                 meta["stage"] = "OCR_RETRY"
         except Exception:
             pass
@@ -630,6 +741,7 @@ def process_tick(in_flight: dict, index: dict, index_path: str, profile: dict, c
 # ---------------------------------------------------------------------------
 # Boucle principale
 # ---------------------------------------------------------------------------
+
 
 def process_loop():
     """
@@ -677,8 +789,12 @@ def process_loop():
         index_path=index_path,
     )
     try:
-        start_http_server(orch_state, port=ORCHESTRATOR_HTTP_PORT, bind=ORCHESTRATOR_HTTP_BIND)
-        _log.info(f"Serveur HTTP démarré sur {ORCHESTRATOR_HTTP_BIND}:{ORCHESTRATOR_HTTP_PORT}")
+        start_http_server(
+            orch_state, port=ORCHESTRATOR_HTTP_PORT, bind=ORCHESTRATOR_HTTP_BIND
+        )
+        _log.info(
+            f"Serveur HTTP démarré sur {ORCHESTRATOR_HTTP_BIND}:{ORCHESTRATOR_HTTP_PORT}"
+        )
     except Exception as e:
         _log.warning(f"Impossible de démarrer le serveur HTTP : {e}")
 

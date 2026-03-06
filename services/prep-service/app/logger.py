@@ -2,6 +2,7 @@
 Helper de logging structuré pour le prep-service.
 Si LOG_JSON=true, chaque log est émis sous forme de ligne JSON.
 """
+
 import json
 import logging
 import os
@@ -17,7 +18,9 @@ def _iso_now(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
-def _format_payload(level_name: str, message: str, extra: dict | None = None, exc: tuple | None = None) -> str:
+def _format_payload(
+    level_name: str, message: str, extra: dict | None = None, exc: tuple | None = None
+) -> str:
     payload = {
         "timestamp": _iso_now(time.time()),
         "level": level_name,
@@ -68,15 +71,25 @@ def get_logger(name: str = _SERVICE) -> logging.Logger:
                 else:
                     exc = exc_info
             # Read LOG_JSON at call time to reflect monkeypatch.setenv + reload behavior
-            log_json_now = os.environ.get("LOG_JSON", "false").lower() in ("true", "1", "yes")
+            log_json_now = os.environ.get("LOG_JSON", "false").lower() in (
+                "true",
+                "1",
+                "yes",
+            )
             if log_json_now:
                 formatted = _format_payload(level_name, msg, extra, exc)
             else:
                 formatted = f"[{level_name}] {_SERVICE}: {msg}"
             record_level = getattr(logging, level_name, logging.INFO)
-            record = logging.LogRecord(name=logger.name, level=record_level,
-                                       pathname=__file__, lineno=0,
-                                       msg=formatted, args=(), exc_info=None)
+            record = logging.LogRecord(
+                name=logger.name,
+                level=record_level,
+                pathname=__file__,
+                lineno=0,
+                msg=formatted,
+                args=(),
+                exc_info=None,
+            )
             if extra:
                 for k, v in extra.items():
                     setattr(record, k, v)
@@ -85,10 +98,13 @@ def get_logger(name: str = _SERVICE) -> logging.Logger:
                     h.emit(record)
                 except Exception:
                     try:
-                        logging.getLogger("stderr").error("Log handler error", exc_info=True)
+                        logging.getLogger("stderr").error(
+                            "Log handler error", exc_info=True
+                        )
                     except Exception:
                         pass
             return None
+
         return _wrapped
 
     logger.debug = _make_wrapper("DEBUG")
@@ -104,4 +120,3 @@ def get_logger(name: str = _SERVICE) -> logging.Logger:
     logger.exception = _exception_wrapper
     logger._structured_wrapped = True
     return logger
-

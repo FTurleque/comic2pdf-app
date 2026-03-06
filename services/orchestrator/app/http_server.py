@@ -19,6 +19,7 @@ Auth :
 
 Démarrage en thread daemon via start_http_server().
 """
+
 import copy
 import hmac
 import json
@@ -45,6 +46,7 @@ _LOCALHOST_IPS = {"127.0.0.1", "::1", "0:0:0:0:0:0:0:1"}
 # OrchestratorState — état partagé thread-safe
 # ---------------------------------------------------------------------------
 
+
 class OrchestratorState:
     """
     Conteneur thread-safe pour les données partagées entre la boucle principale
@@ -64,9 +66,9 @@ class OrchestratorState:
         index_path: str,
     ):
         self._lock = threading.Lock()
-        self._in_flight = in_flight    # référence directe (pas de copie)
-        self._metrics = metrics        # référence directe
-        self._config = config          # référence directe
+        self._in_flight = in_flight  # référence directe (pas de copie)
+        self._metrics = metrics  # référence directe
+        self._config = config  # référence directe
         self._work_dir = work_dir
         self._index_path = index_path
 
@@ -86,19 +88,21 @@ class OrchestratorState:
             for job_key, entry in idx.get("jobs", {}).items():
                 # Compléter avec les infos in_flight si disponibles
                 inflight = self._in_flight.get(job_key, {})
-                jobs.append({
-                    "jobKey": job_key,
-                    "state": entry.get("state", "UNKNOWN"),
-                    "stage": inflight.get("stage", entry.get("state", "")),
-                    "attempt": max(
-                        inflight.get("attemptPrep", 0),
-                        inflight.get("attemptOcr", 0),
-                    ),
-                    "updatedAt": entry.get("updatedAt", ""),
-                    "inputName": entry.get("inputName", ""),
-                    "outPdf": entry.get("outPdf"),
-                    "errorMessage": entry.get("message", ""),
-                })
+                jobs.append(
+                    {
+                        "jobKey": job_key,
+                        "state": entry.get("state", "UNKNOWN"),
+                        "stage": inflight.get("stage", entry.get("state", "")),
+                        "attempt": max(
+                            inflight.get("attemptPrep", 0),
+                            inflight.get("attemptOcr", 0),
+                        ),
+                        "updatedAt": entry.get("updatedAt", ""),
+                        "inputName": entry.get("inputName", ""),
+                        "outPdf": entry.get("outPdf"),
+                        "errorMessage": entry.get("message", ""),
+                    }
+                )
         return jobs
 
     def snapshot_job(self, job_key: str) -> Optional[dict]:
@@ -109,7 +113,9 @@ class OrchestratorState:
         :return: Dict du state.json ou None si absent.
         """
         try:
-            state_path = safe_path(self._work_dir, os.path.join(self._work_dir, job_key, "state.json"))
+            state_path = safe_path(
+                self._work_dir, os.path.join(self._work_dir, job_key, "state.json")
+            )
         except ValueError:
             return None
         with self._lock:
@@ -150,6 +156,7 @@ class OrchestratorState:
 # ---------------------------------------------------------------------------
 # Handler HTTP
 # ---------------------------------------------------------------------------
+
 
 class _OrchestratorHandler(BaseHTTPRequestHandler):
     """Handler HTTP minimaliste pour l'API d'observabilité."""
@@ -204,17 +211,29 @@ class _OrchestratorHandler(BaseHTTPRequestHandler):
             if ok:
                 _log.info(f"[AUDIT] POST /config ACCEPTED ip={client_ip}")
             else:
-                _log.warning(f"[AUDIT] POST /config REFUSED ip={client_ip} reason=invalid_key")
-                self._send_error_json(401, "Authentification requise : header X-Api-Key manquant ou incorrect")
+                _log.warning(
+                    f"[AUDIT] POST /config REFUSED ip={client_ip} reason=invalid_key"
+                )
+                self._send_error_json(
+                    401,
+                    "Authentification requise : header X-Api-Key manquant ou incorrect",
+                )
             return ok
         else:
             # Pas de clé configurée : accepter uniquement localhost
             is_local = client_ip in _LOCALHOST_IPS
             if is_local:
-                _log.info(f"[AUDIT] POST /config ACCEPTED ip={client_ip} (no-key localhost)")
+                _log.info(
+                    f"[AUDIT] POST /config ACCEPTED ip={client_ip} (no-key localhost)"
+                )
             else:
-                _log.warning(f"[AUDIT] POST /config REFUSED ip={client_ip} reason=no_key_non_local")
-                self._send_error_json(403, "POST /config non autorisé depuis une IP non-locale (configurez ORCHESTRATOR_API_KEY)")
+                _log.warning(
+                    f"[AUDIT] POST /config REFUSED ip={client_ip} reason=no_key_non_local"
+                )
+                self._send_error_json(
+                    403,
+                    "POST /config non autorisé depuis une IP non-locale (configurez ORCHESTRATOR_API_KEY)",
+                )
             return is_local
 
     def do_GET(self) -> None:  # noqa: N802
@@ -228,7 +247,7 @@ class _OrchestratorHandler(BaseHTTPRequestHandler):
             self._send_json(200, self.server.state.snapshot_jobs_list())
 
         elif path.startswith("/jobs/"):
-            job_key = path[len("/jobs/"):]
+            job_key = path[len("/jobs/") :]
             if not job_key:
                 self._send_error_json(400, "jobKey manquant dans l'URL")
                 return
@@ -279,7 +298,10 @@ class _OrchestratorHTTPServer(HTTPServer):
 # Démarrage public
 # ---------------------------------------------------------------------------
 
-def start_http_server(state: OrchestratorState, port: int = 8080, bind: str = "0.0.0.0") -> HTTPServer:
+
+def start_http_server(
+    state: OrchestratorState, port: int = 8080, bind: str = "0.0.0.0"
+) -> HTTPServer:
     """
     Démarre le serveur HTTP d'observabilité dans un thread daemon.
 
@@ -292,4 +314,3 @@ def start_http_server(state: OrchestratorState, port: int = 8080, bind: str = "0
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     return server
-

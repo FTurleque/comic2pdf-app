@@ -1,0 +1,29 @@
+# Enforce UTF-8 for important text files; helps avoid BOM and encoding issues
+# Use text=auto for general normalization, then explicit working-tree-encoding where supported
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.properties text eol=lf working-tree-encoding=UTF-8
+*.py text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+
+# Mark binary assets explicitly
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.jar binary
+*.exe binary
+*.dll binary
+*.pyc binary
+
+# Ensure Git doesn't try to normalize archives and images
+docs/ia/archives/* binary
+docs/asset/* binary
+
+# End of file
+

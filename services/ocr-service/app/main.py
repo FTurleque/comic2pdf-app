@@ -1,6 +1,7 @@
 """
 Service FastAPI OCR (ocrmypdf + tesseract -> final.pdf).
 """
+
 import os
 import subprocess
 import threading
@@ -33,6 +34,7 @@ def info():
 
 class OcrSubmit(BaseModel):
     """Corps de la requête POST /jobs/ocr."""
+
     jobId: str
     rawPdfPath: str
     workDir: str
@@ -53,7 +55,9 @@ def submit(req: OcrSubmit):
     running_file = os.path.join(RUNNING_DIR, f"{req.jobId}.json")
     if os.path.exists(job_file) or os.path.exists(running_file):
         return {"jobId": req.jobId, "statusUrl": f"/jobs/{req.jobId}"}
-    atomic_write_json(job_file, req.model_dump() | {"state": "QUEUED", "updatedAt": now_iso()})
+    atomic_write_json(
+        job_file, req.model_dump() | {"state": "QUEUED", "updatedAt": now_iso()}
+    )
     return {"jobId": req.jobId, "statusUrl": f"/jobs/{req.jobId}"}
 
 
@@ -104,7 +108,9 @@ def status(job_id: str):
             return data
 
     # Specific pattern for pytest temp folders (pytest-of-*/pytest-*/...)
-    pattern_pytest_of = os.path.join(tmpdir, "pytest-of-*", "**", "ocr", "queue", filename)
+    pattern_pytest_of = os.path.join(
+        tmpdir, "pytest-of-*", "**", "ocr", "queue", filename
+    )
     for match in glob.glob(pattern_pytest_of, recursive=True):
         checked_paths.append(match)
         data = read_json(match)
@@ -120,7 +126,11 @@ def status(job_id: str):
             return data
 
     # Additionally probe other temp environment variables (TMP, TEMP, TMPDIR)
-    temp_envs = [os.environ.get('TMP'), os.environ.get('TEMP'), os.environ.get('TMPDIR')]
+    temp_envs = [
+        os.environ.get("TMP"),
+        os.environ.get("TEMP"),
+        os.environ.get("TMPDIR"),
+    ]
     for te in temp_envs:
         if not te:
             continue
@@ -161,7 +171,16 @@ def status(job_id: str):
     home = os.path.expanduser("~")
     patterns_extra = [
         os.path.join(home, "**", filename),
-        os.path.join(os.path.abspath(os.sep), "Users", "**", "AppData", "Local", "Temp", "**", filename),
+        os.path.join(
+            os.path.abspath(os.sep),
+            "Users",
+            "**",
+            "AppData",
+            "Local",
+            "Temp",
+            "**",
+            filename,
+        ),
         os.path.join(os.path.abspath(os.sep), "Users", "**", filename),
     ]
     for pat in patterns_extra:
@@ -188,7 +207,9 @@ def status(job_id: str):
 
     # Write debug file with paths checked to help CI debugging (best-effort)
     try:
-        dbg = os.path.join(tempfile.gettempdir(), f"comic2pdf_status_checked_{job_id}.log")
+        dbg = os.path.join(
+            tempfile.gettempdir(), f"comic2pdf_status_checked_{job_id}.log"
+        )
         with open(dbg, "w", encoding="utf-8") as df:
             for cp in checked_paths:
                 df.write(cp + "\n")
@@ -273,8 +294,12 @@ def run_job(job_meta_path: str):
         try:
             heartbeat("start")
             cmd = build_ocrmypdf_cmd(
-                raw_pdf, final_tmp,
-                lang=lang, rotate=rotate_pages, deskew=deskew, optimize=optimize,
+                raw_pdf,
+                final_tmp,
+                lang=lang,
+                rotate=rotate_pages,
+                deskew=deskew,
+                optimize=optimize,
             )
             log.write("CMD: " + " ".join(cmd) + "\n")
             p = subprocess.run(cmd, capture_output=True, text=True)
@@ -283,17 +308,23 @@ def run_job(job_meta_path: str):
                 raise RuntimeError(f"ocrmypdf failed rc={p.returncode}")
 
             os.replace(final_tmp, final_pdf)
-            update_state(job_meta_path, {
-                "state": "DONE",
-                "message": "final.pdf ready",
-                "artifacts": {"finalPdf": final_pdf},
-            })
+            update_state(
+                job_meta_path,
+                {
+                    "state": "DONE",
+                    "message": "final.pdf ready",
+                    "artifacts": {"finalPdf": final_pdf},
+                },
+            )
         except Exception as e:
-            update_state(job_meta_path, {
-                "state": "ERROR",
-                "message": str(e),
-                "error": {"type": type(e).__name__, "detail": str(e)},
-            })
+            update_state(
+                job_meta_path,
+                {
+                    "state": "ERROR",
+                    "message": str(e),
+                    "error": {"type": type(e).__name__, "detail": str(e)},
+                },
+            )
             raise
 
 

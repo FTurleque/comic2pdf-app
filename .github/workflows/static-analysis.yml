@@ -1,0 +1,54 @@
+name: Static Analysis — SonarCloud
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  sonarcloud:
+    name: "SonarCloud Analysis"
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'schedule' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+      - name: Install Python dependencies
+        run: |
+          pip install -r services/prep-service/requirements-dev.txt
+          pip install -r services/ocr-service/requirements-dev.txt
+          pip install -r services/orchestrator/requirements-dev.txt
+          pip install -r tools/requirements-dev.txt
+      - name: Run Python tests with coverage
+        run: |
+          cd services/prep-service && pytest --cov=app --cov-report=xml && cd ../..
+          cd services/ocr-service && pytest --cov=app --cov-report=xml && cd ../..
+          cd services/orchestrator && pytest --cov=app --cov-report=xml && cd ../..
+      - name: Build Java project
+        working-directory: desktop-app
+        run: mvn -B clean verify
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Upload SonarCloud results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarcloud-results
+          path: .scannerwork/
+          retention-days: 30

@@ -2,6 +2,7 @@
 Helper de logging structuré pour l'ocr-service.
 Si LOG_JSON=true, chaque log est émis sous forme de ligne JSON.
 """
+
 import json
 import logging
 import os
@@ -17,7 +18,9 @@ def _iso_now(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
-def _format_payload(level_name: str, message: str, extra: dict | None = None, exc: tuple | None = None) -> str:
+def _format_payload(
+    level_name: str, message: str, extra: dict | None = None, exc: tuple | None = None
+) -> str:
     payload = {
         "timestamp": _iso_now(time.time()),
         "level": level_name,
@@ -86,7 +89,11 @@ def get_logger(name: str = _SERVICE) -> logging.Logger:
                 else:
                     exc = exc_info
             # Read LOG_JSON at call time to reflect monkeypatch.setenv + reload behavior
-            log_json_now = os.environ.get("LOG_JSON", "false").lower() in ("true", "1", "yes")
+            log_json_now = os.environ.get("LOG_JSON", "false").lower() in (
+                "true",
+                "1",
+                "yes",
+            )
             if log_json_now:
                 formatted = _format_payload(level_name, msg, extra, exc)
             else:
@@ -95,9 +102,15 @@ def get_logger(name: str = _SERVICE) -> logging.Logger:
             # éviter que les handlers n'ajoutent une trace d'exception séparée.
             record_level = getattr(logging, level_name, logging.INFO)
             # Créer un LogRecord minimal; message déjà formaté
-            record = logging.LogRecord(name=logger.name, level=record_level,
-                                       pathname=__file__, lineno=0,
-                                       msg=formatted, args=(), exc_info=None)
+            record = logging.LogRecord(
+                name=logger.name,
+                level=record_level,
+                pathname=__file__,
+                lineno=0,
+                msg=formatted,
+                args=(),
+                exc_info=None,
+            )
             # Copier extra champs éventuels (non-standard) dans record
             if extra:
                 for k, v in extra.items():
@@ -109,10 +122,13 @@ def get_logger(name: str = _SERVICE) -> logging.Logger:
                 except Exception:
                     # Ne jamais laisser un handler planter l'application
                     try:
-                        logging.getLogger("stderr").error("Log handler error", exc_info=True)
+                        logging.getLogger("stderr").error(
+                            "Log handler error", exc_info=True
+                        )
                     except Exception:
                         pass
             return None
+
         return _wrapped
 
     logger.debug = _make_wrapper(orig_debug, "DEBUG")
@@ -130,4 +146,3 @@ def get_logger(name: str = _SERVICE) -> logging.Logger:
 
     logger._structured_wrapped = True
     return logger
-

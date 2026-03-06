@@ -1,0 +1,213 @@
+name: Dependency Audit — pip-audit (gating) + pip-licenses (snapshot)
+
+# Rôle de ce workflow : GATING de sécurité (bloquant en PR/push, warn en schedule)
+# + snapshot de licences Python runtime (non bloquant, artefact CI).
+#
+# Coexistence avec ci.yml :
+#   - ci.yml/python-audit : REPORTING uniquement (non bloquant, artefacts JSON).
+#   - ce workflow        : GATING explicite (fail sur CVE HIGH/CRITICAL en PR/push).
+# → Supprimer/refactorer python-audit dans ci.yml après 1–2 cycles de stabilisation.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"  # lundi 06:00 UTC
+
+jobs:
+  # ============================================================================
+  # Job A : Audit vulnérabilités pip-audit
+  #   - PR / push : BLOQUANT si CVE HIGH ou CRITICAL (CVSS ≥ 7)
+  #   - schedule  : WARN-ONLY (continue-on-error, job summary, artefact JSON)
+  #
+  # L'arbre transitif est couvert : on installe requirements.txt avant l'audit,
+  # ce qui résout les dépendances transitives dans l'environnement CI.
+  #
+  # Note sur les versions non épinglées :
+  #   Jusqu'à la PR "chore/pin-dependencies" (pip-tools), l'audit porte sur les
+  #   dernières versions disponibles au moment du run CI ("meilleur cas").
+  #   Après pinning, l'audit portera sur les versions réellement déployées.
+  # ============================================================================
+  pip-audit-gating:
+    name: "pip-audit — ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { service: prep-service,  dir: services/prep-service }
+          - { service: ocr-service,   dir: services/ocr-service }
+          - { service: orchestrator,  dir: services/orchestrator }
+          - { service: tools,         dir: tools }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Installer pip-audit + les deps runtime pour auditer l'arbre transitif résolu
+      - name: Install runtime deps + audit tool
+        working-directory: ${{ matrix.dir }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit
+          python -m pip install -r requirements.txt
+
+      # ── PR / push : BLOQUANT — fail si CVE HIGH ou CRITICAL ────────────────
+      - name: Audit vulnerabilities — fail on HIGH/CRITICAL (PR/push)
+        if: github.event_name != 'schedule'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          python -m pip_audit --severity high
+
+      # ── Schedule : WARN-ONLY — continue-on-error + rapport JSON ────────────
+      - name: Audit vulnerabilities — warn-only (schedule)
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        working-directory: ${{ matrix.dir }}
+        run: |
+          python -m pip_audit --severity high -f json \
+            -o pip-audit-${{ matrix.service }}.json
+
+      - name: Job summary — warn-only (schedule)
+        if: github.event_name == 'schedule'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          echo "## 🔍 pip-audit — ${{ matrix.service }} (schedule, warn-only)" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Mode **warn-only** en schedule : aucun échec CI déclenché." \
+            >> $GITHUB_STEP_SUMMARY
+          echo "> Les CVEs HIGH/CRITICAL **bloquent** la PR en mode pull_request/push." \
+            >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> 📌 **Note sur les versions non épinglées** : l'audit porte sur les" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "> versions installées en CI au moment du run (meilleur cas, non reproductible)." \
+            >> $GITHUB_STEP_SUMMARY
+          echo "> Après la PR \`chore/pin-dependencies\` (pip-tools), l'audit portera" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "> sur les versions réellement déployées (arbre transitif résolu à versions fixes)." \
+            >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "pip-audit-${{ matrix.service }}.json" ]; then
+            echo "- 📄 Rapport JSON : \`pip-audit-${{ matrix.service }}.json\`" \
+              >> $GITHUB_STEP_SUMMARY
+            python3 -c "
+          import json, sys
+          try:
+              data = json.load(open('pip-audit-${{ matrix.service }}.json'))
+              deps = data.get('dependencies', [])
+              vulns = [d for d in deps if d.get('vulns')]
+              if vulns:
+                  print(f'- ⚠️ **{len(vulns)} paquet(s) avec CVE détecté(s)**')
+                  for d in vulns:
+                      for v in d.get('vulns', []):
+                          sev = v.get('fix_versions', [])
+                          print(f'  - \`{d[\"name\"]}\` : {v[\"id\"]} — fix: {sev}')
+              else:
+                  print('- ✅ Aucune vulnérabilité HIGH/CRITICAL détectée.')
+          except Exception as e:
+              print(f'- ⚠️ Impossible de lire le rapport : {e}')
+            " >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ✅ Aucun rapport JSON généré (aucune vulnérabilité détectée)." \
+              >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload audit report (schedule)
+        if: github.event_name == 'schedule'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-${{ matrix.service }}-schedule
+          path: ${{ matrix.dir }}/pip-audit-${{ matrix.service }}.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ============================================================================
+  # Job B : Snapshot licences Python runtime — NON BLOQUANT
+  #
+  # Périmètre :
+  #   - requirements.txt runtime uniquement (pas -dev).
+  #   - pip install -r requirements.txt installe les transitives → l'artefact CI
+  #     couvre directes + transitives.
+  #   - docs/compliance/python-deps-licenses.md = snapshot direct maîtrisé
+  #     (périmètre humainement contrôlé, mis à jour manuellement).
+  #   - Après chore/pin-dependencies : artefact CI = reproductible à versions fixes.
+  #
+  # Les entrées UNKNOWN sont signalées (warn) sans échouer le pipeline.
+  # ============================================================================
+  licenses-snapshot:
+    name: "pip-licenses snapshot — ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { service: prep-service,  dir: services/prep-service }
+          - { service: ocr-service,   dir: services/ocr-service }
+          - { service: orchestrator,  dir: services/orchestrator }
+          - { service: tools,         dir: tools }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Installer pip-licenses + deps runtime uniquement (pas -dev)
+      - name: Install pip-licenses + runtime deps
+        working-directory: ${{ matrix.dir }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-licenses
+          python -m pip install -r requirements.txt
+
+      - name: Generate licenses report (markdown)
+        working-directory: ${{ matrix.dir }}
+        run: |
+          pip-licenses --format=markdown --with-urls \
+            --output-file licenses-${{ matrix.service }}.md
+
+      # Signaler les UNKNOWN sans échouer le pipeline
+      - name: Flag UNKNOWN licences (warn — non bloquant)
+        working-directory: ${{ matrix.dir }}
+        run: |
+          python3 - <<'PYEOF'
+          import sys
+          fname = "licenses-${{ matrix.service }}.md"
+          try:
+              content = open(fname, encoding="utf-8").read()
+          except FileNotFoundError:
+              print(f"⚠ Fichier {fname} introuvable — skip")
+              sys.exit(0)
+          lines = content.splitlines()
+          unknown_lines = [l for l in lines if "UNKNOWN" in l]
+          if unknown_lines:
+              print(f"⚠ {len(unknown_lines)} licence(s) UNKNOWN détectée(s) dans {fname}:")
+              for l in unknown_lines:
+                  print(f"  → {l.strip()}")
+              print("  Ces entrées sont à vérifier manuellement.")
+              print("  Elles n'échouent PAS le pipeline (continue-on-error: true).")
+          else:
+              print(f"✓ Aucune licence UNKNOWN dans {fname}")
+          PYEOF
+
+      - name: Upload licenses artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-licenses-${{ matrix.service }}
+          path: ${{ matrix.dir }}/licenses-${{ matrix.service }}.md
+          if-no-files-found: warn
+          retention-days: 30
+

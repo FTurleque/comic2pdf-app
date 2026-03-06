@@ -2,6 +2,7 @@
 Module core de l'ocr-service.
 Contient les fonctions pures testables sans démarrer de serveur FastAPI.
 """
+
 import os
 import subprocess
 from typing import List
@@ -91,4 +92,3 @@ def requeue_running(running_dir: str, queue_dir: str) -> int:
         except Exception:
             pass
     return count
-

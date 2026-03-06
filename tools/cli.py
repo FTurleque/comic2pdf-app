@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from tqdm import tqdm
 
 # Ajouter la racine du repo au path pour importer tools/
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -199,8 +200,12 @@ def _step_extract(input_path: str, pages_dir: str) -> None:
     ensure_dir(pages_dir)
     sz = require_tool("7z")
     cmd = [sz, "x", "-y", f"-o{pages_dir}", input_path]
+
     print(f"[comic2pdf] Extraction : {os.path.basename(input_path)}")
-    result = subprocess.run(cmd, capture_output=True, text=True, shell=False)
+    with tqdm(desc="Extraction 7z", unit="fichier", bar_format="{desc}: {bar} {n_fmt}") as pbar:
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=False)
+        pbar.update(1)
+
     if result.returncode != 0:
         _die(
             f"7z a échoué (code {result.returncode}) :\n"
@@ -225,12 +230,14 @@ def _step_images_to_pdf(pages_dir: str, raw_pdf: str) -> None:
         _die("Aucune image trouvée dans l'archive. Le fichier est peut-être corrompu.")
 
     print(f"[comic2pdf] Génération raw.pdf ({len(images)} page(s))...")
-    try:
-        images_to_pdf(images, raw_pdf)
-    except ImportError as e:
-        _die(f"img2pdf manquant : {e}\n  → pip install img2pdf")
-    except Exception as e:
-        _die(f"Échec de la génération du raw.pdf : {e}")
+    with tqdm(total=len(images), desc="Conversion images→PDF", unit="page") as pbar:
+        try:
+            images_to_pdf(images, raw_pdf)
+            pbar.update(len(images))
+        except ImportError as e:
+            _die(f"img2pdf manquant : {e}\n  → pip install img2pdf")
+        except Exception as e:
+            _die(f"Échec de la génération du raw.pdf : {e}")
 
 
 def _step_ocr(raw_pdf: str, final_pdf: str, lang: str) -> None:
@@ -248,7 +255,10 @@ def _step_ocr(raw_pdf: str, final_pdf: str, lang: str) -> None:
     cmd[0] = ocr_bin
 
     print(f"[comic2pdf] OCR en cours (lang={lang})...")
-    result = subprocess.run(cmd, capture_output=True, text=True, shell=False)
+    with tqdm(desc="OCR Tesseract", unit="étape", bar_format="{desc}: {bar}") as pbar:
+        result = subprocess.run(cmd, capture_output=True, text=True, shell=False)
+        pbar.update(1)
+
     if result.returncode != 0:
         _die(
             f"ocrmypdf a échoué (code {result.returncode}) :\n"
