@@ -15,7 +15,7 @@
     <testfx.version>4.0.18</testfx.version>
     <monocle.version>21.0.2</monocle.version>
     <!-- Défauts pour le profil ui-tests afin d'éviter une substitution non résolue -->
-    <argLine></argLine>
+    <argLine/>
     <testfx.headless>false</testfx.headless>
     <prism.order>sw</prism.order>
   </properties>
@@ -41,7 +41,13 @@
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>2.17.2</version>
+      <version>2.21.1</version>
+    </dependency>
+    <!-- Explicit jackson-core bump to mitigate GHSA-72hv-8253-57qq (DoS via async parser) -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+      <version>2.21.1</version>
     </dependency>
 
     <!-- Test unitaires -->
@@ -76,6 +82,13 @@
       <groupId>org.testfx</groupId>
       <artifactId>openjfx-monocle</artifactId>
       <version>${monocle.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Fix CVE-2026-24400: explicit AssertJ update to 3.27.7 -->
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>3.27.7</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
