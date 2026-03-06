@@ -147,7 +147,6 @@ jobs:
   pypi-publish:
     name: PyPI publish (CLI comic2pdf)
     runs-on: ubuntu-latest
-    needs: []   # indépendant de docker-publish
     permissions:
       id-token: write   # Requis pour Trusted Publishing OIDC
 
@@ -225,7 +224,6 @@ jobs:
   java-installer:
     name: "jpackage installer — ${{ matrix.os }}"
     runs-on: ${{ matrix.os }}
-    needs: []   # indépendant de docker-publish
     continue-on-error: true  # Ne pas bloquer la release si jpackage échoue
     strategy:
       fail-fast: false
@@ -430,7 +428,9 @@ jobs:
 
             ---
             Voir `docs/release/publishing.md` pour le guide complet de publication.
-          files: release-assets/**
+-          files: release-assets/**
++          files:
++            - 'release-assets/**'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
