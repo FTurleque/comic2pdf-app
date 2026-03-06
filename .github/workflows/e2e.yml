@@ -1,56 +1,74 @@
 name: E2E — Pipeline CBZ→PDF (Docker)
 
+# Stratégie de déclenchement :
+#   - PR + push main   → e2e-smoke (1 CBZ, timeout 90s, ~5 min)
+#   - Schedule nightly → e2e-full  (3 CBZ variés, timeout 180s)
+#   - workflow_dispatch → choix smoke|full + timeout configurable
+#   - label 'run-e2e' sur PR → e2e-full forcé
+
 on:
-  # Déclenchement manuel uniquement
+  push:
+    branches: [main]
+
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+
+  schedule:
+    # Nightly 02h00 UTC
+    - cron: "0 2 * * *"
+
   workflow_dispatch:
     inputs:
+      suite:
+        description: "Suite à exécuter (smoke | full)"
+        required: false
+        default: "full"
       timeout_seconds:
         description: "Timeout d'attente du PDF (secondes)"
         required: false
-        default: "120"
+        default: "180"
 
-  # OU si la PR porte le label 'run-e2e'
-  pull_request:
-    types: [labeled]
+# Annuler les runs en cours sur la même branche/PR pour éviter la saturation
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # Vérifier que le label 'run-e2e' est présent (skip sinon)
-  check-label:
-    name: Vérification label run-e2e
+  # ===========================================================================
+  # Job 1 : E2E Smoke — PR + push main + dispatch smoke
+  #   - 1 CBZ minimal (2 pages)
+  #   - Timeout 90s
+  #   - Objectif : < 10 min
+  # ===========================================================================
+  e2e-smoke:
+    name: "E2E Smoke (1 CBZ)"
     runs-on: ubuntu-latest
-    outputs:
-      should-run: ${{ steps.check.outputs.should-run }}
-    steps:
-      - name: Vérifier le déclencheur
-        id: check
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "should-run=true" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "pull_request" ] && \
-               [ "${{ github.event.label.name }}" = "run-e2e" ]; then
-            echo "should-run=true" >> $GITHUB_OUTPUT
-          else
-            echo "should-run=false" >> $GITHUB_OUTPUT
-          fi
+    timeout-minutes: 12
 
-  e2e-pipeline:
-    name: "E2E CBZ→PDF (Docker Compose)"
-    runs-on: ubuntu-latest
-    needs: check-label
-    if: needs.check-label.outputs.should-run == 'true'
-    timeout-minutes: 15
+    # Conditions d'activation :
+    #   - push main
+    #   - PR sans label 'run-e2e' (le full prend la main si label présent)
+    #   - dispatch explicitement smoke
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       !contains(github.event.pull_request.labels.*.name, 'run-e2e')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.suite == 'smoke')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.12 (pour le script E2E)
+      - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
-      - name: Install Pillow (génération du CBZ de test)
-        run: pip install pillow
+      - name: Install test dependencies
+        run: pip install pillow pytest
 
       - name: Créer les dossiers data/
         run: |
@@ -60,49 +78,164 @@ jobs:
       - name: Démarrer la stack Docker
         run: docker compose up -d --build
         env:
-          ORCHESTRATOR_API_KEY: ""  # Pas de clé pour les tests E2E
+          ORCHESTRATOR_API_KEY: ""
 
-      - name: Attendre que les services soient prêts (30s max)
+      - name: Attendre que les services soient prêts (healthcheck sans sleep fixe)
         run: |
-          echo "Attente des services..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:18083/metrics > /dev/null 2>&1; then
-              echo "✅ Orchestrateur disponible après ${i}s"
+          echo "Attente de l'orchestrateur (healthcheck polling)..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:18083/metrics > /dev/null 2>&1 && \
+               curl -sf http://localhost:8081/info > /dev/null 2>&1 && \
+               curl -sf http://localhost:8082/info > /dev/null 2>&1; then
+              echo "✅ Tous les services disponibles après ${i}s"
               break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "❌ Services non disponibles après 60s"
+              docker compose logs
+              exit 1
             fi
             sleep 1
           done
 
-      - name: Lancer le test E2E
+      - name: Lancer E2E Smoke (pytest -m e2e)
         env:
-          E2E_TIMEOUT: ${{ github.event.inputs.timeout_seconds || '120' }}
-        run: python tests/e2e/test_pipeline_e2e.py
+          E2E_TIMEOUT: "90"
+          E2E_POLL_INTERVAL: "2"
+        run: |
+          pytest tests/e2e/test_pipeline_e2e.py \
+            -v \
+            --junit-xml=e2e-smoke-results.xml \
+            --tb=short
 
-      - name: Vérifier le PDF de sortie
+      - name: Vérifier la présence du PDF de sortie
         run: |
           count=$(ls data/out/*.pdf 2>/dev/null | wc -l)
           echo "PDFs trouvés dans data/out/ : $count"
-          if [ "$count" -eq 0 ]; then
-            echo "❌ ECHEC : Aucun PDF trouvé dans data/out/"
-            exit 1
-          fi
-          echo "✅ SUCCÈS : $count PDF(s) trouvé(s)"
-          ls -lh data/out/
+          ls -lh data/out/ 2>/dev/null || true
+          [ "$count" -ge 1 ] || { echo "❌ Aucun PDF dans data/out/"; exit 1; }
 
-      - name: Collecter les logs Docker (en cas d'échec)
-        if: failure()
+      - name: Collecter les logs Docker
+        if: always()
         run: |
-          echo "=== Logs orchestrator ===" && docker compose logs orchestrator || true
-          echo "=== Logs prep-service ===" && docker compose logs prep-service || true
-          echo "=== Logs ocr-service ===" && docker compose logs ocr-service || true
+          mkdir -p /tmp/docker-logs
+          docker compose logs orchestrator > /tmp/docker-logs/orchestrator.log 2>&1 || true
+          docker compose logs prep-service > /tmp/docker-logs/prep-service.log 2>&1 || true
+          docker compose logs ocr-service  > /tmp/docker-logs/ocr-service.log  2>&1 || true
 
-      - name: Upload logs Docker en cas d'échec
-        if: failure()
+      - name: Upload artefacts smoke
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-logs-e2e
-          path: /tmp/docker-logs/
+          name: e2e-smoke-${{ github.run_id }}
+          path: |
+            e2e-smoke-results.xml
+            /tmp/docker-logs/
           retention-days: 7
+
+      - name: Arrêter la stack Docker
+        if: always()
+        run: docker compose down -v
+
+  # ===========================================================================
+  # Job 2 : E2E Full — schedule nightly + label 'run-e2e' + dispatch full
+  #   - 3 CBZ (2 pages, 5 pages, nom avec caractères spéciaux)
+  #   - Timeout 180s par test
+  #   - Objectif : < 30 min
+  # ===========================================================================
+  e2e-full:
+    name: "E2E Full (3 CBZ variés)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'run-e2e')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.suite == 'full' || github.event.inputs.suite == ''))
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test dependencies
+        run: pip install pillow pytest
+
+      - name: Créer les dossiers data/
+        run: |
+          mkdir -p data/in data/out data/work data/error data/archive \
+                   data/hold/duplicates data/reports/duplicates data/index
+
+      - name: Démarrer la stack Docker
+        run: docker compose up -d --build
+        env:
+          ORCHESTRATOR_API_KEY: ""
+
+      - name: Attendre que les services soient prêts (healthcheck sans sleep fixe)
+        run: |
+          echo "Attente de l'orchestrateur (healthcheck polling)..."
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:18083/metrics > /dev/null 2>&1 && \
+               curl -sf http://localhost:8081/info > /dev/null 2>&1 && \
+               curl -sf http://localhost:8082/info > /dev/null 2>&1; then
+              echo "✅ Tous les services disponibles après ${i}s"
+              break
+            fi
+            if [ "$i" -eq 90 ]; then
+              echo "❌ Services non disponibles après 90s"
+              docker compose logs
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Lancer E2E Full (test principal + variantes)
+        env:
+          E2E_TIMEOUT: ${{ github.event.inputs.timeout_seconds || '180' }}
+          E2E_POLL_INTERVAL: "2"
+        run: |
+          pytest tests/e2e/ \
+            -v \
+            --junit-xml=e2e-full-results.xml \
+            --tb=short
+
+      - name: Vérifier la présence des PDFs de sortie
+        run: |
+          count=$(ls data/out/*.pdf 2>/dev/null | wc -l)
+          echo "PDFs trouvés dans data/out/ : $count"
+          ls -lh data/out/ 2>/dev/null || true
+          [ "$count" -ge 1 ] || { echo "❌ Aucun PDF dans data/out/"; exit 1; }
+
+      - name: Collecter les logs Docker
+        if: always()
+        run: |
+          mkdir -p /tmp/docker-logs
+          docker compose logs orchestrator > /tmp/docker-logs/orchestrator.log 2>&1 || true
+          docker compose logs prep-service > /tmp/docker-logs/prep-service.log 2>&1 || true
+          docker compose logs ocr-service  > /tmp/docker-logs/ocr-service.log  2>&1 || true
+          docker compose logs > /tmp/docker-logs/all.log 2>&1 || true
+
+      - name: Collecter les PDFs produits
+        if: always()
+        run: cp -r data/out/ /tmp/e2e-output/ 2>/dev/null || mkdir -p /tmp/e2e-output
+
+      - name: Upload artefacts full
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-full-${{ github.run_id }}
+          path: |
+            e2e-full-results.xml
+            /tmp/docker-logs/
+            /tmp/e2e-output/
+          retention-days: 14
 
       - name: Arrêter la stack Docker
         if: always()

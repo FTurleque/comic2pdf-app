@@ -7,8 +7,10 @@ import javafx.stage.Stage;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -16,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>Note TestFX JUnit 5 : {@code start()} est appelé AVANT {@code @BeforeEach}.
  * Le stub HTTP et les overrides sont initialisés dans {@code @BeforeAll} (statique).</p>
+ *
+ * <p>Stabilisation : l'attente de réception du body JSON utilise Awaitility
+ * ({@code await().atMost(5, SECONDS).until(...)}) pour éviter toute attente fixe
+ * et garantir un timeout borné.</p>
  */
 @Tag("ui")
 class ConfigUiTest extends BaseUiTest {
@@ -76,11 +82,14 @@ class ConfigUiTest extends BaseUiTest {
         clickOn("#applyConfigBtn");
         WaitForAsyncUtils.waitForFxEvents();
 
-        // Attendre que le stub ait reçu la requête POST (max 5s)
-        long deadline = System.currentTimeMillis() + 5_000;
-        while (capturedBody.get() == null && System.currentTimeMillis() < deadline) {
-            WaitForAsyncUtils.sleep(50, java.util.concurrent.TimeUnit.MILLISECONDS);
-        }
+        // Attendre que le stub ait reçu la requête POST.
+        // Awaitility interroge la condition toutes les 50 ms pendant 5 s max :
+        // - aucun sleep fixe arbitraire
+        // - déterministe : se termine dès que capturedBody est non-null
+        await()
+            .atMost(5, TimeUnit.SECONDS)
+            .pollInterval(50, TimeUnit.MILLISECONDS)
+            .until(() -> capturedBody.get() != null);
 
         String body = capturedBody.get();
         assertNotNull(body, "Le stub doit avoir reçu un body JSON via POST /config");
@@ -94,4 +103,6 @@ class ConfigUiTest extends BaseUiTest {
                 "JSON doit contenir la clé default_ocr_lang");
     }
 }
+
+
 

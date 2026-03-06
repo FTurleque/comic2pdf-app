@@ -1,0 +1,436 @@
+name: Release — Docker Hub + GitHub Release
+
+# Déclenché uniquement sur les tags vX.Y.Z
+# Publie les images Docker sur Docker Hub, crée la GitHub Release et attache les artefacts.
+#
+# Secrets requis :
+#   DOCKERHUB_USERNAME  — nom d'utilisateur Docker Hub
+#   DOCKERHUB_TOKEN     — Personal Access Token (ou token PAT Docker Hub)
+#
+# GITHUB_TOKEN standard est suffisant pour créer la release (permissions contents: write).
+#
+# PyPI : aucun package installable détecté dans le dépôt (pas de pyproject.toml).
+#        La cible PyPI est documentée comme "en attente" dans docs/release/publishing.md.
+#
+# jpackage : activé conditionnellement sur les 3 OS runners (ubuntu, windows, macos).
+#            Produit des installers natifs (.deb, .exe, .dmg) + checksums SHA256.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # Nécessaire pour créer la GitHub Release
+
+env:
+  DOCKERHUB_NAMESPACE: fturleque81
+  IMAGE_PREFIX: comic2pdf
+
+jobs:
+  # ============================================================================
+  # Job 1 : Build + Push des images Docker sur Docker Hub
+  #   - matrix sur 3 services réels (orchestrator, prep-service, ocr-service)
+  #   - multi-arch : linux/amd64 uniquement (arm64 nécessite QEMU + validation Dockerfiles)
+  #   - tags : version X.Y.Z + latest + sha-XXXXXXX
+  #   - produit docker-digests.txt (artefact + attaché à la release)
+  # ============================================================================
+  docker-publish:
+    name: "Docker publish — ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: orchestrator
+            context: services/orchestrator
+            dockerfile: services/orchestrator/Dockerfile
+          - service: prep-service
+            context: services/prep-service
+            dockerfile: services/prep-service/Dockerfile
+          - service: ocr-service
+            context: services/ocr-service
+            dockerfile: services/ocr-service/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag (v1.2.3 → 1.2.3)
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Write digest entry
+        run: |
+          echo "${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}@${{ steps.build.outputs.digest }}" \
+            >> docker-digests-${{ matrix.service }}.txt
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-digest-${{ matrix.service }}
+          path: docker-digests-${{ matrix.service }}.txt
+          retention-days: 30
+
+  # ============================================================================
+  # Job 2 : Agrégation des digests Docker en un fichier unique
+  # ============================================================================
+  docker-digests-merge:
+    name: Merge Docker digests
+    runs-on: ubuntu-latest
+    needs: docker-publish
+
+    steps:
+      - name: Download all digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: docker-digest-*
+          path: digests/
+          merge-multiple: false
+
+      - name: Merge into docker-digests.txt
+        run: |
+          cat digests/docker-digest-orchestrator/docker-digests-orchestrator.txt \
+              digests/docker-digest-prep-service/docker-digests-prep-service.txt \
+              digests/docker-digest-ocr-service/docker-digests-ocr-service.txt \
+              > docker-digests.txt
+          echo "--- docker-digests.txt ---"
+          cat docker-digests.txt
+
+      - name: Upload merged digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-digests
+          path: docker-digests.txt
+          retention-days: 90
+
+  # ============================================================================
+  # Job 3 : Publication PyPI du CLI comic2pdf
+  #   - Construit sdist + wheel depuis pyproject.toml (racine du dépôt)
+  #   - Vérifie que la version du package == version du tag (sinon fail)
+  #   - Trusted Publishing OIDC (recommandé) : permissions id-token: write
+  #   - Fallback : secret PYPI_API_TOKEN si OIDC non configuré sur pypi.org
+  #   - Upload dist/* comme artefact + attaché à la GitHub Release
+  # ============================================================================
+  pypi-publish:
+    name: PyPI publish (CLI comic2pdf)
+    runs-on: ubuntu-latest
+    needs: []   # indépendant de docker-publish
+    permissions:
+      id-token: write   # Requis pour Trusted Publishing OIDC
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build sdist + wheel
+        run: python -m build --sdist --wheel --outdir dist/
+
+      - name: Verify package version matches tag
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          PKG_VERSION=$(python -c "
+          import importlib.metadata as m
+          try:
+              print(m.version('comic2pdf'))
+          except m.PackageNotFoundError:
+              import tomllib, pathlib
+              d = tomllib.loads(pathlib.Path('pyproject.toml').read_text())
+              print(d['project']['version'])
+          ")
+          echo "Tag version : $TAG_VERSION"
+          echo "Package version : $PKG_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "❌ Version mismatch : tag=$TAG_VERSION != package=$PKG_VERSION"
+            echo "   Mettre à jour pyproject.toml [project].version avant de tagger."
+            exit 1
+          fi
+          echo "✅ Versions cohérentes : $TAG_VERSION"
+
+      - name: Twine check (validation du package)
+        run: twine check dist/*
+
+      - name: Publish to PyPI (Trusted Publishing OIDC)
+        # Méthode recommandée : OIDC — aucun secret requis
+        # Prérequis : configurer le publisher sur https://pypi.org/manage/account/publishing/
+        #   owner=<github-org>, repo=comic2pdf-app, workflow=release.yml, env=(vide)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Si OIDC non configuré, décommenter les lignes ci-dessous et commenter le step ci-dessus :
+        # with:
+        #   password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/
+          retention-days: 90
+
+  # ============================================================================
+  # Job 4 : Build installer Java (jpackage) — optionnel, 3 OS
+  #
+  # Prérequis jpackage :
+  #   - Le JAR fat doit être assemblé (maven-assembly-plugin ou shade).
+  #     Si le pom.xml ne le produit pas encore, ce job échouera proprement
+  #     avec un message d'erreur explicite — pas de régression sur la release Docker.
+  #   - Le module desktop-app utilise JavaFX 21 + Java 21.
+  #   - Sur macOS : la signature (codesign) n'est PAS activée (certificat requis).
+  #   - Sur Windows : WiX Toolset est installé par l'image windows-latest.
+  # ============================================================================
+  java-installer:
+    name: "jpackage installer — ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+    needs: []   # indépendant de docker-publish
+    continue-on-error: true  # Ne pas bloquer la release si jpackage échoue
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_ext: deb
+            package_type: deb
+          - os: windows-latest
+            artifact_ext: exe
+            package_type: exe
+          - os: macos-latest
+            artifact_ext: dmg
+            package_type: dmg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Java 21 with JavaFX support
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # WiX Toolset requis pour générer .exe sur Windows
+      - name: Install WiX Toolset (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          choco install wixtoolset --no-progress -y
+          echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $env:GITHUB_PATH
+
+      - name: Build fat JAR (mvn package)
+        working-directory: desktop-app
+        shell: bash
+        run: mvn -q clean package -DskipTests
+
+      - name: Check fat JAR exists
+        working-directory: desktop-app
+        shell: bash
+        run: |
+          JAR=$(find target -name "desktop-app-*-jar-with-dependencies.jar" -o \
+                            -name "desktop-app-*-shaded.jar" 2>/dev/null | head -1)
+          if [ -z "$JAR" ]; then
+            # Fallback sur le JAR standard
+            JAR=$(find target -name "desktop-app-*.jar" ! -name "*-sources.jar" \
+                              ! -name "*-tests.jar" 2>/dev/null | head -1)
+          fi
+          if [ -z "$JAR" ]; then
+            echo "❌ Aucun JAR trouvé dans desktop-app/target/ — jpackage ignoré."
+            exit 1
+          fi
+          echo "JAR_PATH=$JAR" >> "$GITHUB_ENV"
+          echo "✅ JAR trouvé : $JAR"
+
+      - name: Run jpackage
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          jpackage \
+            --type ${{ matrix.package_type }} \
+            --name "comic2pdf-desktop" \
+            --app-version "$VERSION" \
+            --input "$(dirname $JAR_PATH)" \
+            --main-jar "$(basename $JAR_PATH)" \
+            --dest installer-output/ \
+            --vendor "comic2pdf-app" \
+            --description "Interface desktop JavaFX pour comic2pdf" \
+            --java-options "--add-opens javafx.graphics/com.sun.javafx.application=ALL-UNNAMED"
+
+      - name: Compute SHA256 checksums
+        shell: bash
+        run: |
+          cd installer-output
+          if command -v sha256sum &> /dev/null; then
+            sha256sum * > checksums-${{ matrix.os }}.sha256
+          else
+            # macOS
+            shasum -a 256 * > checksums-${{ matrix.os }}.sha256
+          fi
+          cat checksums-${{ matrix.os }}.sha256
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: |
+            installer-output/*.${{ matrix.artifact_ext }}
+            installer-output/checksums-${{ matrix.os }}.sha256
+          retention-days: 90
+
+  # ============================================================================
+  # Job 4 : Création de la GitHub Release
+  #   - Attend docker-digests-merge (et java-installer si possible)
+  #   - Attache : docker-digests.txt + installers + checksums
+  #   - generate_release_notes: true pour changelog automatique
+  # ============================================================================
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - docker-digests-merge
+      - pypi-publish
+      - java-installer
+
+    # Lancer même si java-installer a échoué (continue-on-error ci-dessus)
+    if: always() && needs.docker-digests-merge.result == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download docker-digests artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-digests
+          path: release-assets/
+
+      - name: Download PyPI dist artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: pypi-dist
+          path: release-assets/
+
+      - name: Download installer artifacts (Ubuntu)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: installer-ubuntu-latest
+          path: release-assets/
+
+      - name: Download installer artifacts (Windows)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: installer-windows-latest
+          path: release-assets/
+
+      - name: Download installer artifacts (macOS)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: installer-macos-latest
+          path: release-assets/
+
+      - name: List release assets
+        run: ls -lh release-assets/ || echo "Aucun asset trouvé"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "${{ github.ref_name }}"
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          body: |
+            ## 🐳 Images Docker publiées
+
+            | Service | Image Docker Hub |
+            |---|---|
+            | orchestrator | `${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-orchestrator:${{ steps.version.outputs.version }}` |
+            | prep-service | `${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-prep-service:${{ steps.version.outputs.version }}` |
+            | ocr-service  | `${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-ocr-service:${{ steps.version.outputs.version }}` |
+
+            ```bash
+            # Exemple de pull
+            docker pull ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-orchestrator:${{ steps.version.outputs.version }}
+            docker pull ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-prep-service:${{ steps.version.outputs.version }}
+            docker pull ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_PREFIX }}-ocr-service:${{ steps.version.outputs.version }}
+            ```
+
+            Voir `docker-digests.txt` pour les digests exacts des images publiées.
+
+            ## 🐍 Package PyPI — CLI comic2pdf
+
+            ```bash
+            pip install comic2pdf==${{ steps.version.outputs.version }}
+            comic2pdf mon-fichier.cbz --lang fra+eng --out ./output/
+            ```
+
+            ## 🖥️ Installer desktop (JavaFX)
+
+            Les installers natifs sont attachés si le build jpackage a réussi :
+            - `.deb` (Linux/Debian)
+            - `.exe` (Windows)
+            - `.dmg` (macOS)
+
+            Avec leurs checksums SHA256 correspondants.
+
+            ---
+            Voir `docs/release/publishing.md` pour le guide complet de publication.
+          files: release-assets/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

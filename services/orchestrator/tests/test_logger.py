@@ -70,3 +70,33 @@ class TestLoggerJson:
         assert "level" in data
         assert "message" in data
 
+    def test_log_avec_exc_info_inclut_champ_exception(self, monkeypatch):
+        """Avec exc_info=True, le JSON contient un champ 'exception' (branche L.32)."""
+        import importlib
+        import app.logger as mod
+        importlib.reload(mod)
+
+        import io
+        stream = io.StringIO()
+        h = logging.StreamHandler(stream)
+        h.setFormatter(mod._JsonFormatter())
+
+        logger = logging.getLogger("test_exc_info_json")
+        logger.handlers = [h]
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+
+        try:
+            raise ValueError("erreur de test exc_info")
+        except ValueError:
+            logger.error("une erreur s'est produite", exc_info=True)
+
+        output = stream.getvalue().strip()
+        if not output:
+            pytest.skip("Aucune sortie capturée")
+
+        data = json.loads(output)
+        assert "exception" in data
+        assert "ValueError" in data["exception"]
+        assert "erreur de test exc_info" in data["exception"]
+

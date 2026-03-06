@@ -1,0 +1,83 @@
+version: 2
+updates:
+  # NOTE : Sans versions épinglées dans requirements.txt, Dependabot pip ne peut
+  # pas proposer de PRs de mise à jour (pas de version de départ connue).
+  # → Créer la PR "chore/pin-dependencies" (pip-tools : requirements.in →
+  #   pip-compile → requirements.txt épinglé) après merge de cette PR pour
+  #   rendre Dependabot pleinement opérationnel.
+
+  # ── pip : prep-service ─────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/services/prep-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── pip : ocr-service ──────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/services/ocr-service"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── pip : orchestrator ─────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/services/orchestrator"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── pip : tools ────────────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/tools"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── github-actions : sécurité supply-chain ─────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "security"
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types:
+          - "minor"
+          - "patch"
+

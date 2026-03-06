@@ -2,6 +2,12 @@
 
 Ce guide détaille la stratégie de test, les commandes à exécuter et la façon d'ajouter de nouveaux tests.
 
+> **Note pour l'installation de pytest-xdist dans l'IDE** : Si vous utilisez PyCharm et que vous rencontrez des erreurs liées à `pytest-xdist`, assurez-vous que le package est installé dans l'interpréteur Python de votre projet. Vous pouvez l'installer via la fenêtre de terminal intégrée à PyCharm :
+> ```bash
+> pip install pytest-xdist
+> ```
+> Ou en l'ajoutant manuellement dans les paramètres de votre projet.
+
 ---
 
 ## Vue d'ensemble des tests
@@ -664,7 +670,3 @@ pytest -q ..\tests\tools\
 - **Tout appel à `subprocess.run`** (7z, ocrmypdf) doit être mocké via `mocker.patch("tools.cli.subprocess.run", ...)`.
 - **Tests de fonctions pures** (pipeline_core) : utiliser `tmp_path` pytest pour l'isolation FS.
 - **Tests "réels" optionnels** : décorer avec `@pytest.mark.skipif(shutil.which("7z") is None, ...)`.
-
-```
-
-

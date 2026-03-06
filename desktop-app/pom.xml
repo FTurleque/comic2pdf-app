@@ -52,6 +52,19 @@
       <scope>test</scope>
     </dependency>
 
+    <!--
+      Awaitility — attentes bornées sur condition dans les tests UI.
+      Remplace les boucles while/deadline + sleep par des assertions
+      déclaratives : await().atMost(3, SECONDS).untilAsserted(() -> ...).
+      Compatible JUnit 5 + TestFX.
+    -->
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <version>4.2.2</version>
+      <scope>test</scope>
+    </dependency>
+
     <!-- Test UI : TestFX + Monocle headless opt-in -->
     <dependency>
       <groupId>org.testfx</groupId>
@@ -88,6 +101,35 @@
         <configuration>
           <excludedGroups>ui</excludedGroups>
         </configuration>
+      </plugin>
+      <!--
+        maven-assembly-plugin — produit un fat JAR (jar-with-dependencies).
+        Requis par jpackage (release.yml) pour générer les installers natifs.
+        Usage : mvn package → target/desktop-app-<version>-jar-with-dependencies.jar
+      -->
+      <plugin>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.7.1</version>
+        <configuration>
+          <descriptorRefs>
+            <descriptorRef>jar-with-dependencies</descriptorRef>
+          </descriptorRefs>
+          <archive>
+            <manifest>
+              <mainClass>com.comic2pdf.desktop.MainApp</mainClass>
+            </manifest>
+          </archive>
+          <appendAssemblyId>true</appendAssemblyId>
+        </configuration>
+        <executions>
+          <execution>
+            <id>make-fat-jar</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <!--
         JaCoCo — couverture de tests (activée via profils).

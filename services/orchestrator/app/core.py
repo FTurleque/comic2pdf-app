@@ -2,6 +2,7 @@
 Module core de l'orchestrateur.
 Contient les fonctions pures testables sans démarrer de boucle watch.
 """
+
 import hashlib
 import json
 import os
@@ -10,12 +11,14 @@ from typing import Optional
 
 from app.utils import ensure_dir, atomic_write_json, now_iso
 
-
 # ---------------------------------------------------------------------------
 # Profil canonique + jobKey
 # ---------------------------------------------------------------------------
 
-def canonical_profile(prep_info: dict, ocr_info: dict, ocr_lang: str = "fra+eng") -> dict:
+
+def canonical_profile(
+    prep_info: dict, ocr_info: dict, ocr_lang: str = "fra+eng"
+) -> dict:
     """
     Construit le profil canonique incluant les versions des outils.
     La langue est normalisée (tokens triés + dédupliqués) pour garantir
@@ -81,7 +84,10 @@ def make_job_key(file_hash: str, profile: dict) -> tuple:
 # Heartbeat
 # ---------------------------------------------------------------------------
 
-def is_heartbeat_stale(hb_path: str, timeout_s: int, absent_timeout_s: Optional[int] = None) -> bool:
+
+def is_heartbeat_stale(
+    hb_path: str, timeout_s: int, absent_timeout_s: Optional[int] = None
+) -> bool:
     """
     Détermine si un heartbeat est périmé.
 
@@ -115,10 +121,18 @@ def is_heartbeat_stale(hb_path: str, timeout_s: int, absent_timeout_s: Optional[
 # ---------------------------------------------------------------------------
 
 # Whitelist complète des compteurs supportés
-_METRIC_KEYS = frozenset({
-    "done", "error", "running", "queued",
-    "disk_error", "pdf_invalid", "input_rejected_size", "input_rejected_signature",
-})
+_METRIC_KEYS = frozenset(
+    {
+        "done",
+        "error",
+        "running",
+        "queued",
+        "disk_error",
+        "pdf_invalid",
+        "input_rejected_size",
+        "input_rejected_signature",
+    }
+)
 
 
 def make_empty_metrics() -> dict:
@@ -180,4 +194,3 @@ def write_metrics(metrics: dict, index_dir: str) -> str:
     metrics["updatedAt"] = now_iso()
     atomic_write_json(path, metrics)
     return path
-
