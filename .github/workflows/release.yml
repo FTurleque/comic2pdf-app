@@ -428,9 +428,8 @@ jobs:
 
             ---
             Voir `docs/release/publishing.md` pour le guide complet de publication.
--          files: release-assets/**
-+          files:
-+            - 'release-assets/**'
+          files:
+            - 'release-assets/**'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
