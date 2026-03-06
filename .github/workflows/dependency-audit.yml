@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload audit report (schedule)
         if: github.event_name == 'schedule'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pip-audit-${{ matrix.service }}-schedule
           path: ${{ matrix.dir }}/pip-audit-${{ matrix.service }}.json
@@ -204,7 +204,7 @@ jobs:
           PYEOF
 
       - name: Upload licenses artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-licenses-${{ matrix.service }}
           path: ${{ matrix.dir }}/licenses-${{ matrix.service }}.md

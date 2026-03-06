@@ -68,7 +68,7 @@ jobs:
             --junit-xml=junit-parallel.xml
 
       - name: Upload coverage XML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-${{ matrix.service }}
@@ -79,7 +79,7 @@ jobs:
           retention-days: 14
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: htmlcov-${{ matrix.service }}
@@ -141,7 +141,7 @@ jobs:
           "
 
       - name: Upload audit report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pip-audit-${{ matrix.service }}
@@ -171,7 +171,7 @@ jobs:
         run: mvn clean verify -Pcoverage -Pcoverage-check
 
       - name: Upload JaCoCo HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: jacoco-report
@@ -179,7 +179,7 @@ jobs:
           retention-days: 14
 
       - name: Upload JaCoCo XML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: jacoco-xml
@@ -218,7 +218,7 @@ jobs:
             -Dprism.verbose=true
 
       - name: Upload UI test reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ui-test-reports
@@ -226,7 +226,7 @@ jobs:
           retention-days: 7
 
       - name: Upload UI test screenshots (si échec)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: ui-test-screenshots
@@ -310,7 +310,7 @@ jobs:
             || true
 
       - name: Upload OWASP report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: owasp-dependency-check
@@ -389,7 +389,7 @@ jobs:
         run: twine check dist/*
 
       - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pypi-dist-ci
           path: dist/
