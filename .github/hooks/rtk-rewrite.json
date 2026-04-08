@@ -1,0 +1,36 @@
+{
+  "version": "1",
+  "description": "Préfixe rtk sur les commandes CLI pour optimiser les tokens LLM (60-90% d'économie).",
+  "hooks": [
+    {
+      "event": "PreToolUse",
+      "tool": "run_in_terminal",
+      "enabled": true,
+      "patterns": [
+        "^(git|docker|mvn|pytest|pip|ls|grep|find|curl|wget|pnpm|npm|npx|cargo|tsc)\\b",
+        "^(black|flake8|pre-commit|python -m pytest)\\b"
+      ],
+      "action": "prepend_rtk",
+      "comment": "Ajoute 'rtk ' avant la commande si elle correspond à un pattern connu. Voir docs/RTK.md."
+    }
+  ],
+  "passthrough": [
+    "rtk ",
+    "cd ",
+    "echo ",
+    "export ",
+    "set ",
+    "mkdir ",
+    "rm ",
+    "cp ",
+    "mv ",
+    "cat ",
+    "type ",
+    "Get-",
+    "Set-",
+    "New-",
+    "Remove-",
+    "Write-",
+    "Read-"
+  ]
+}

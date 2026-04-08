@@ -1,0 +1,43 @@
+# .github/labeler.yml
+# Labels automatiques basés sur les fichiers modifiés (actions/labeler@v5)
+# Déclenché par .github/workflows/pr-labeler.yml
+
+service/prep:
+  - changed-files:
+    - any-glob-to-any-file: "services/prep-service/**"
+
+service/ocr:
+  - changed-files:
+    - any-glob-to-any-file: "services/ocr-service/**"
+
+service/orchestrator:
+  - changed-files:
+    - any-glob-to-any-file: "services/orchestrator/**"
+
+desktop:
+  - changed-files:
+    - any-glob-to-any-file: "desktop-app/**"
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file: ".github/workflows/**"
+    - any-glob-to-any-file: ".github/hooks/**"
+    - any-glob-to-any-file: ".pre-commit-config.yaml"
+    - any-glob-to-any-file: "scripts/install-hooks*"
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file: "docs/**"
+    - any-glob-to-any-file: "README.md"
+    - any-glob-to-any-file: "*/README.md"
+
+docker:
+  - changed-files:
+    - any-glob-to-any-file: "docker-compose.yml"
+    - any-glob-to-any-file: "**/Dockerfile"
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file: "**/requirements*.txt"
+    - any-glob-to-any-file: "desktop-app/pom.xml"
+    - any-glob-to-any-file: "pyproject.toml"
