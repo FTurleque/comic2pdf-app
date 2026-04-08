@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service à tester (all = tous)'
+        required: false
+        default: 'all'
+        type: choice
+        options: [all, prep-service, ocr-service, orchestrator]
 
 env:
   DOCKERHUB_NAMESPACE: fturleque81
@@ -17,6 +25,11 @@ jobs:
   python-tests:
     name: "Python tests — ${{ matrix.service }}"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: >
+      github.event_name != 'workflow_dispatch' ||
+      inputs.service == 'all' ||
+      inputs.service == matrix.service
     strategy:
       fail-fast: false
       matrix:
@@ -99,6 +112,7 @@ jobs:
   python-audit:
     name: "Python security audit — ${{ matrix.service }}"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +168,7 @@ jobs:
   java-tests:
     name: Java tests (desktop-app)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -192,6 +207,7 @@ jobs:
   java-ui-tests:
     name: Java UI tests (TestFX headless)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -278,6 +294,7 @@ jobs:
   java-audit:
     name: Java OWASP Dependency-Check
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Exécuté uniquement sur main pour éviter de ralentir toutes les PRs
     # (le check NVD peut prendre plusieurs minutes la première fois)
     if: github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'run-audit')
@@ -327,6 +344,7 @@ jobs:
   docker-build:
     name: "Docker build (no push) — ${{ matrix.service }}"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -368,6 +386,7 @@ jobs:
   cli-build:
     name: CLI build (PyPI sdist + wheel)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -404,6 +423,7 @@ jobs:
   java-installer-build:
     name: Java installer build (jpackage — validation CI)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     continue-on-error: true
 
     steps:

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# pre-push hook : lance pytest sur les services Python modifiés avant push.
+# Copié dans .git/hooks/pre-push par scripts/install-hooks.ps1 / install-hooks.sh
+#
+# Ignorer : git push --no-verify
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SERVICES=("prep-service" "ocr-service" "orchestrator")
+
+# Détermine les services ayant des commits non encore poussés
+changed_services() {
+    local upstream
+    upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || echo "")
+    if [[ -z "$upstream" ]]; then
+        # Premier push — tester tous les services
+        printf '%s\n' "${SERVICES[@]}"
+        return
+    fi
+    local changed_files
+    changed_files=$(git diff --name-only "$upstream"..HEAD 2>/dev/null || echo "")
+    for svc in "${SERVICES[@]}"; do
+        if echo "$changed_files" | grep -q "services/$svc/"; then
+            echo "$svc"
+        fi
+    done
+}
+
+targets=$(changed_services)
+
+if [[ -z "$targets" ]]; then
+    echo "pre-push: aucun service Python modifié — tests ignorés."
+    exit 0
+fi
+
+failed=()
+while IFS= read -r svc; do
+    svc_dir="$REPO_ROOT/services/$svc"
+    echo ""
+    echo "▶ pytest $svc ..."
+    if ! (cd "$svc_dir" && python -m pytest -q -x --no-header --tb=short); then
+        failed+=("$svc")
+    fi
+done <<< "$targets"
+
+if [[ ${#failed[@]} -gt 0 ]]; then
+    echo ""
+    echo "✗ Tests échoués : ${failed[*]}"
+    echo "  Utilisez 'git push --no-verify' pour ignorer (déconseillé)."
+    exit 1
+fi
+
+echo ""
+echo "✓ Tous les tests passent."
+exit 0

@@ -1,0 +1,42 @@
+# .pre-commit-config.yaml
+# Installation : scripts/install-hooks.ps1 (Windows) ou scripts/install-hooks.sh (Linux/macOS)
+# Documentation : https://pre-commit.com/
+repos:
+  # ── Hooks de base ──────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        types: [python]
+      - id: end-of-file-fixer
+        types: [python]
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+
+  # ── Formatage Python (Black) ───────────────────────────────────────────────
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  # ── Linting Python (flake8) ────────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+
+  # ── Hooks locaux ───────────────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      # Message de commit — Conventional Commits (.github/git-commit-instructions.md)
+      - id: commit-msg-conventional
+        name: "Conventional Commits"
+        language: python
+        entry: python .github/hooks/commit-msg-validator.py
+        stages: [commit-msg]
+        pass_filenames: false
+        always_run: true

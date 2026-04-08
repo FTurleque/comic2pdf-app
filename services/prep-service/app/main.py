@@ -8,6 +8,8 @@ import subprocess
 import threading
 import time
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -47,7 +49,29 @@ RUNNING_DIR = _PathProxy("prep", "running")
 DONE_DIR = _PathProxy("prep", "done")
 ERROR_DIR = _PathProxy("prep", "error")
 
-app = FastAPI(title="prep-service")
+# ---------------------------------------------------------------------------
+# State partagé entre lifespan et worker_loop
+# ---------------------------------------------------------------------------
+_stop_event = threading.Event()
+_worker_threads: list = []
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Cycle de vie FastAPI : startup → yield → shutdown."""
+    # Requeue existing running jobs into the queue (policy: full recompute)
+    requeue_running_on_startup()
+    # Respect DISABLE_WORKERS for test environments to avoid spawning background threads
+    if os.environ.get("DISABLE_WORKERS", "0") != "1":
+        for _ in range(max(1, SERVICE_CONCURRENCY)):
+            t = threading.Thread(target=worker_loop, args=(_stop_event,), daemon=True)
+            t.start()
+            _worker_threads.append(t)
+    yield
+    _stop_event.set()
+
+
+app = FastAPI(title="prep-service", lifespan=lifespan)
 
 
 @app.get("/info")
@@ -280,29 +304,5 @@ def worker_loop(stop_event: threading.Event):
 
 
 # ---------------------------------------------------------------------------
-# Bootstrap : déclenché uniquement par FastAPI au démarrage (pas à l'import)
+# Bootstrap : géré par le context manager lifespan (voir en-tête du module)
 # ---------------------------------------------------------------------------
-
-_stop_event = threading.Event()
-_worker_threads = []
-
-
-@app.on_event("startup")
-def startup():
-    """Démarre les workers au lancement du serveur FastAPI."""
-    # Requeue existing running jobs into the queue (policy: full recompute)
-    requeue_running_on_startup()
-    # Respect DISABLE_WORKERS for test environments to avoid spawning background threads
-    if os.environ.get("DISABLE_WORKERS", "0") == "1":
-        # Workers disabled by environment (useful for tests)
-        return
-    for _ in range(max(1, SERVICE_CONCURRENCY)):
-        t = threading.Thread(target=worker_loop, args=(_stop_event,), daemon=True)
-        t.start()
-        _worker_threads.append(t)
-
-
-@app.on_event("shutdown")
-def shutdown():
-    """Arrête proprement les workers à l'arrêt du serveur FastAPI."""
-    _stop_event.set()
