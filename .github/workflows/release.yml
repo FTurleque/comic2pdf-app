@@ -98,7 +98,7 @@ jobs:
             >> docker-digests-${{ matrix.service }}.txt
 
       - name: Upload digest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-digest-${{ matrix.service }}
           path: docker-digests-${{ matrix.service }}.txt
@@ -130,7 +130,7 @@ jobs:
           cat docker-digests.txt
 
       - name: Upload merged digests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-digests
           path: docker-digests.txt
@@ -204,7 +204,7 @@ jobs:
         #   password: ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pypi-dist
           path: dist/
@@ -314,7 +314,7 @@ jobs:
           cat checksums-${{ matrix.os }}.sha256
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: installer-${{ matrix.os }}
           path: |
