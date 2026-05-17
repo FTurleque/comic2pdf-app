@@ -311,7 +311,7 @@ jobs:
           cache: maven
 
       - name: Cache NVD database
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository/org/owasp
           key: owasp-nvd-${{ runner.os }}-${{ hashFiles('desktop-app/pom.xml') }}
